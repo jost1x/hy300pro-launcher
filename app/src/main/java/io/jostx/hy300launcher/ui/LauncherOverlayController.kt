@@ -101,7 +101,6 @@ class LauncherOverlayController(
         settingsOverlay = LauncherSettingsOverlay(
             activity = activity,
             selectedAppCount = selectedPackages().size,
-            onClose = { closeLauncherSettings() },
             onManageHomeApps = {
                 returnToLauncherSettings = true
                 closeLauncherSettings(requestFocus = false)
