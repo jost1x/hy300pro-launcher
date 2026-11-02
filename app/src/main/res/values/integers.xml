@@ -1,0 +1,8 @@
+<resources>
+    <integer name="motion_focus">210</integer>
+    <integer name="motion_tooltip_in">160</integer>
+    <integer name="motion_tooltip_out">140</integer>
+    <integer name="motion_row_focus">120</integer>
+    <integer name="tooltip_timeout">2200</integer>
+    <integer name="launcher_grid_min_columns">3</integer>
+</resources>

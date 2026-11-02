@@ -5,6 +5,7 @@ local.properties
 *.iml
 .idea/
 *.apk
+!artifacts/projector-apks/*.apk
 *.aab
 *.jks
 *.keystore

@@ -22,7 +22,7 @@ class LauncherSettingsOverlay(
 
     init {
         orientation = VERTICAL
-        setPadding(activity.dp(48), activity.dp(27), activity.dp(48), activity.dp(27))
+        setPadding(activity.dp(activity.uiDimen(R.dimen.space_48)), activity.dp(activity.uiDimen(R.dimen.space_27)), activity.dp(activity.uiDimen(R.dimen.space_48)), activity.dp(activity.uiDimen(R.dimen.space_27)))
         setBackgroundResource(R.drawable.launcher_background)
         isFocusable = false
         isFocusableInTouchMode = false
@@ -32,9 +32,9 @@ class LauncherSettingsOverlay(
             gravity = Gravity.CENTER_VERTICAL
         }
         val heading = LinearLayout(activity).apply { orientation = VERTICAL }
-        heading.addView(activity.launcherLabel("Ajustes del launcher", 26, LauncherPalette.text, bold = true))
+        heading.addView(activity.launcherLabel("Ajustes del launcher", R.style.LauncherTextHeading, bold = true))
         header.addView(heading, LayoutParams(0, -2, 1f))
-        addView(header, LayoutParams(-1, activity.dp(58)))
+        addView(header, LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_58))))
 
         val scroll = ScrollView(activity).apply {
             isFocusable = false
@@ -45,15 +45,15 @@ class LauncherSettingsOverlay(
         }
         val content = LinearLayout(activity).apply {
             orientation = VERTICAL
-            setPadding(activity.dp(12), 0, activity.dp(12), 0)
+            setPadding(activity.dp(activity.uiDimen(R.dimen.space_12)), 0, activity.dp(activity.uiDimen(R.dimen.space_12)), 0)
             clipChildren = false
             clipToPadding = false
         }
         scroll.addView(content, LayoutParams(-1, -2))
 
         content.addView(
-            activity.launcherLabel("Pantalla de inicio", 14, LauncherPalette.muted, bold = true),
-            LayoutParams(-1, -2).apply { topMargin = activity.dp(24); bottomMargin = activity.dp(10) },
+            activity.launcherLabel("Pantalla de inicio", R.style.LauncherTextCaption, bold = true),
+            LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_24)); bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
         )
         content.addView(
             settingRow(
@@ -70,12 +70,12 @@ class LauncherSettingsOverlay(
                 "Elige qué app se abre al pulsar Inicio",
                 onChooseDefaultLauncher,
             ),
-            LayoutParams(-1, -2).apply { topMargin = activity.dp(10) },
+            LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
         )
 
         content.addView(
-            activity.launcherLabel("Información", 14, LauncherPalette.muted, bold = true),
-            LayoutParams(-1, -2).apply { topMargin = activity.dp(26); bottomMargin = activity.dp(10) },
+            activity.launcherLabel("Información", R.style.LauncherTextCaption, bold = true),
+            LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_26)); bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
         )
         content.addView(
             settingRow(
@@ -86,7 +86,7 @@ class LauncherSettingsOverlay(
             ),
         )
 
-        addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = activity.dp(8) })
+        addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_8)) })
     }
 
     fun focusInitialItem() {
@@ -97,43 +97,44 @@ class LauncherSettingsOverlay(
         LinearLayout(activity).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(activity.dp(20), activity.dp(14), activity.dp(22), activity.dp(14))
+            setPadding(activity.dp(activity.uiDimen(R.dimen.space_20)), activity.dp(activity.uiDimen(R.dimen.space_14)), activity.dp(activity.uiDimen(R.dimen.space_22)), activity.dp(activity.uiDimen(R.dimen.space_14)))
             isFocusable = true
             isFocusableInTouchMode = true
-            background = activity.rounded(LauncherPalette.surface, 12)
+            background = activity.rounded(activity.uiColor(R.color.launcher_surface), activity.uiDimen(R.dimen.radius_surface))
             addView(FrameLayout(activity).apply {
                 addView(ImageView(activity).apply {
                     setImageResource(iconRes)
-                    setColorFilter(LauncherPalette.text)
+                    setColorFilter(activity.uiColor(R.color.launcher_text_primary))
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }, FrameLayout.LayoutParams(activity.dp(25), activity.dp(25), Gravity.CENTER))
-            }, LayoutParams(activity.dp(44), activity.dp(44)).apply { rightMargin = activity.dp(18) })
+                }, FrameLayout.LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_25)), activity.dp(activity.uiDimen(R.dimen.space_25)), Gravity.CENTER))
+            }, LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_44)), activity.dp(activity.uiDimen(R.dimen.space_44))).apply { rightMargin = activity.dp(activity.uiDimen(R.dimen.space_18)) })
 
             val text = LinearLayout(activity).apply {
                 orientation = VERTICAL
-                addView(activity.launcherLabel(title, 16, LauncherPalette.text, bold = true))
-                addView(activity.launcherLabel(description, 13, LauncherPalette.muted).apply {
+                addView(activity.launcherLabel(title, R.style.LauncherTextBody, bold = true))
+                addView(activity.launcherLabel(description, R.style.LauncherTextCaption).apply {
                     maxLines = 2
-                }, LayoutParams(-1, -2).apply { topMargin = activity.dp(3) })
+                }, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_3)) })
             }
             addView(text, LayoutParams(0, -2, 1f))
-            addView(activity.launcherLabel("›", 28, LauncherPalette.muted), LayoutParams(-2, -2).apply {
-                leftMargin = activity.dp(16)
+            addView(activity.launcherLabel("›", R.style.LauncherTextTitle), LayoutParams(-2, -2).apply {
+                leftMargin = activity.dp(activity.uiDimen(R.dimen.space_16))
             })
 
             setOnFocusChangeListener { view, focused ->
                 view.animate().scaleX(if (focused) 1.025f else 1f)
-                    .scaleY(if (focused) 1.025f else 1f).setDuration(120).start()
+                    .scaleY(if (focused) 1.025f else 1f).setDuration(activity.resources.getInteger(R.integer.motion_row_focus).toLong()).start()
                 view.background = activity.rounded(
-                    if (focused) Color.rgb(35, 48, 68) else LauncherPalette.surface,
-                    14,
-                    if (focused) LauncherPalette.accent else null,
+                    if (focused) activity.uiColor(R.color.launcher_glass_focus_panel) else activity.uiColor(R.color.launcher_surface),
+                    activity.uiDimen(R.dimen.radius_action),
+                    if (focused) activity.uiColor(R.color.launcher_glass_focus_edge) else null,
+                    if (focused) activity.uiDimen(R.dimen.focus_ring_toolbar) else null,
                 )
-                view.elevation = if (focused) activity.dp(6).toFloat() else 0f
+                view.elevation = if (focused) activity.dp(activity.uiDimen(R.dimen.elevation_focus)).toFloat() else 0f
             }
             setOnClickListener { onClick() }
             rows += this
         }.also { row ->
-            row.layoutParams = LayoutParams(-1, activity.dp(84))
+            row.layoutParams = LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_84)))
         }
 }

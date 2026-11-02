@@ -1,12 +1,11 @@
 package io.jostx.hy300launcher.ui
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -17,6 +16,7 @@ import io.jostx.hy300launcher.R
 class SettingsDropdownMenu(
     private val activity: Activity,
     private val onLauncherSettings: () -> Unit,
+    private val onImageCorrection: () -> Unit,
     private val onProjectorSettings: () -> Unit,
     private val onAndroidSettings: () -> Unit,
 ) {
@@ -28,12 +28,9 @@ class SettingsDropdownMenu(
     fun show(anchor: View) {
         if (popup?.isShowing == true) return
 
-        val menu = LinearLayout(activity).apply {
+        val menuContent = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8))
-            // Outer corner = focused row corner (11dp) + menu inset (8dp).
-            background = activity.rounded(LauncherPalette.surface, 19, LauncherPalette.shelfBorder)
-            elevation = activity.dp(12).toFloat()
+            setPadding(activity.dp(activity.uiDimen(R.dimen.space_8)), activity.dp(activity.uiDimen(R.dimen.space_8)), activity.dp(activity.uiDimen(R.dimen.space_8)), activity.dp(activity.uiDimen(R.dimen.space_8)))
         }
 
         val rows = listOf(
@@ -44,6 +41,11 @@ class SettingsDropdownMenu(
             ),
             SettingsItem(
                 R.drawable.ic_tv,
+                "Imagen del proyector",
+                onImageCorrection,
+            ),
+            SettingsItem(
+                R.drawable.ic_monitor_play,
                 "Ajustes del proyector",
                 onProjectorSettings,
             ),
@@ -55,32 +57,69 @@ class SettingsDropdownMenu(
         ).map { item -> createRow(item) }
 
         rows.forEachIndexed { index, row ->
-            menu.addView(
+            menuContent.addView(
                 row,
-                LinearLayout.LayoutParams(-1, activity.dp(58)).apply {
-                    if (index > 0) topMargin = activity.dp(3)
+                LinearLayout.LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_58))).apply {
+                    if (index > 0) topMargin = activity.dp(activity.uiDimen(R.dimen.space_3))
                 },
             )
         }
 
-        val width = activity.dp(260)
-        val window = PopupWindow(menu, width, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+        val width = activity.dp(activity.uiDimen(R.dimen.space_260))
+        menuContent.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val height = menuContent.measuredHeight
+        val anchorPosition = IntArray(2)
+        anchor.getLocationOnScreen(anchorPosition)
+        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val minimumLeft = activity.dp(activity.uiDimen(R.dimen.space_8))
+        val maximumLeft = (screenWidth - width - minimumLeft).coerceAtLeast(minimumLeft)
+        val left = (anchorPosition[0] + anchor.width - width).coerceIn(minimumLeft, maximumLeft)
+        val top = anchorPosition[1] + anchor.height + activity.dp(activity.uiDimen(R.dimen.space_8))
+
+        val decor = activity.window.decorView
+        val backdropBitmap = captureBlurredBackdrop(activity, decor, left, top, width, height)
+        val backdrop = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.FIT_XY
+            setImageBitmap(backdropBitmap)
+            background = activity.rounded(Color.TRANSPARENT, (activity.uiDimen(R.dimen.radius_popup_inner) + activity.uiDimen(R.dimen.popup_inset)))
+            clipToOutline = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val glassOverlay = View(activity).apply {
+            // Outer corner = focused row corner (11dp) + menu inset (8dp).
+            background = activity.glassRounded(
+                activity.uiColor(R.color.launcher_glass_menu),
+                activity.uiDimen(R.dimen.radius_popup_inner) + activity.uiDimen(R.dimen.popup_inset),
+                activity.uiColor(R.color.launcher_glass_menu_edge),
+            )
+            isClickable = false
+            isFocusable = false
+        }
+        val menu = FrameLayout(activity).apply {
+            background = activity.rounded(Color.TRANSPARENT, (activity.uiDimen(R.dimen.radius_popup_inner) + activity.uiDimen(R.dimen.popup_inset)))
+            clipToOutline = true
+            clipChildren = true
+            addView(backdrop, FrameLayout.LayoutParams(-1, -1))
+            addView(glassOverlay, FrameLayout.LayoutParams(-1, -1))
+            addView(menuContent, FrameLayout.LayoutParams(-1, -1))
+        }
+
+        val window = PopupWindow(menu, width, height, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            elevation = activity.dp(12).toFloat()
+            elevation = activity.dp(activity.uiDimen(R.dimen.elevation_menu)).toFloat()
             setOnDismissListener {
+                backdrop.setImageDrawable(null)
+                backdropBitmap?.takeIf { !it.isRecycled }?.recycle()
                 if (anchor.isShown) anchor.requestFocus()
             }
         }
         popup = window
 
-        val anchorPosition = IntArray(2)
-        anchor.getLocationOnScreen(anchorPosition)
-        val screenWidth = activity.resources.displayMetrics.widthPixels
-        val minimumLeft = activity.dp(8)
-        val maximumLeft = (screenWidth - width - minimumLeft).coerceAtLeast(minimumLeft)
-        val left = (anchorPosition[0] + anchor.width - width).coerceIn(minimumLeft, maximumLeft)
-        window.showAsDropDown(anchor, left - anchorPosition[0], activity.dp(8))
+        window.showAsDropDown(anchor, left - anchorPosition[0], activity.dp(activity.uiDimen(R.dimen.space_8)))
         rows.firstOrNull()?.post { rows.firstOrNull()?.requestFocus() }
     }
 
@@ -91,33 +130,38 @@ class SettingsDropdownMenu(
     private fun createRow(item: SettingsItem) = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(activity.dp(14), 0, activity.dp(10), 0)
+        setPadding(activity.dp(activity.uiDimen(R.dimen.space_14)), 0, activity.dp(activity.uiDimen(R.dimen.space_10)), 0)
         isFocusable = true
         isFocusableInTouchMode = true
         contentDescription = item.title
-        background = activity.rounded(Color.TRANSPARENT, 11)
+        background = activity.rounded(Color.TRANSPARENT, activity.uiDimen(R.dimen.radius_popup_inner))
 
         addView(FrameLayout(activity).apply {
             addView(ImageView(activity).apply {
                 setImageResource(item.icon)
-                setColorFilter(LauncherPalette.text)
+                setColorFilter(activity.uiColor(R.color.launcher_text_primary))
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, FrameLayout.LayoutParams(activity.dp(22), activity.dp(22), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(activity.dp(28), activity.dp(34)).apply {
-            rightMargin = activity.dp(12)
+            }, FrameLayout.LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_22)), activity.dp(activity.uiDimen(R.dimen.space_22)), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_28)), activity.dp(activity.uiDimen(R.dimen.space_34))).apply {
+            rightMargin = activity.dp(activity.uiDimen(R.dimen.space_12))
         })
 
         addView(
-            activity.launcherLabel(item.title, 15, LauncherPalette.text, bold = true),
+            activity.launcherLabel(item.title, R.style.LauncherTextBody, bold = true),
             LinearLayout.LayoutParams(0, -2, 1f),
         )
 
         setOnFocusChangeListener { view, focused ->
-            view.background = activity.rounded(
-                if (focused) LauncherPalette.actionSurface else Color.TRANSPARENT,
-                11,
-                if (focused) LauncherPalette.accent else null,
-            )
+            view.background = if (focused) {
+                activity.glassRounded(
+                    activity.uiColor(R.color.launcher_glass_focus_fill),
+                    activity.uiDimen(R.dimen.radius_popup_inner),
+                    activity.uiColor(R.color.launcher_glass_focus_edge),
+                    strokeWidthDp = activity.uiDimen(R.dimen.space_1),
+                )
+            } else {
+                activity.rounded(Color.TRANSPARENT, activity.uiDimen(R.dimen.radius_popup_inner))
+            }
         }
         setOnClickListener {
             popup?.dismiss()

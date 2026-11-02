@@ -36,12 +36,14 @@ class AppMenuOverlay(
     private val closeButton: TextView
 
     init {
-        val availableWidth = (activity.resources.configuration.screenWidthDp - 60).coerceAtLeast(430)
-        columns = (availableWidth / 142).coerceAtLeast(3)
-        tileWidthDp = availableWidth / columns - 8
+        val availableWidth = (activity.resources.configuration.screenWidthDp - activity.uiDimen(R.dimen.catalog_horizontal_inset))
+            .coerceAtLeast(activity.uiDimen(R.dimen.catalog_min_width))
+        columns = (availableWidth / activity.uiDimen(R.dimen.catalog_tile_base_width))
+            .coerceAtLeast(activity.resources.getInteger(R.integer.launcher_grid_min_columns))
+        tileWidthDp = availableWidth / columns - activity.uiDimen(R.dimen.catalog_tile_gap)
 
         orientation = VERTICAL
-        setPadding(activity.dp(30), activity.dp(20), activity.dp(30), activity.dp(18))
+        setPadding(activity.dp(activity.uiDimen(R.dimen.space_30)), activity.dp(activity.uiDimen(R.dimen.space_20)), activity.dp(activity.uiDimen(R.dimen.space_30)), activity.dp(activity.uiDimen(R.dimen.space_18)))
         setBackgroundResource(R.drawable.launcher_background)
         isFocusable = false
         isFocusableInTouchMode = false
@@ -51,30 +53,38 @@ class AppMenuOverlay(
             gravity = Gravity.CENTER_VERTICAL
         }
         val headerText = LinearLayout(activity).apply { orientation = VERTICAL }
-        headerText.addView(activity.launcherLabel(title(), 22, LauncherPalette.text, bold = true))
-        headerText.addView(activity.launcherLabel(subtitle(), 12, LauncherPalette.muted))
+        headerText.addView(activity.launcherLabel(title(), R.style.LauncherTextTitle, bold = true))
+        headerText.addView(activity.launcherLabel(subtitle(), R.style.LauncherTextCaption))
         header.addView(headerText, LayoutParams(0, -2, 1f))
 
         closeButton = TextView(activity).apply {
             text = "Volver"
-            textSize = 14f
-            setTextColor(LauncherPalette.text)
+            setTextAppearance(R.style.LauncherTextBody)
             gravity = Gravity.CENTER
-            setPadding(activity.dp(18), 0, activity.dp(18), 0)
+            setPadding(activity.dp(activity.uiDimen(R.dimen.space_18)), 0, activity.dp(activity.uiDimen(R.dimen.space_18)), 0)
             isFocusable = true
             isFocusableInTouchMode = true
-            background = activity.rounded(LauncherPalette.surface, 12)
+            background = activity.glassRounded(
+                activity.uiColor(R.color.launcher_glass_toolbar_fill),
+                activity.uiDimen(R.dimen.radius_action),
+                activity.uiColor(R.color.launcher_glass_toolbar_edge),
+            )
             setOnFocusChangeListener { view, focused ->
-                view.background = activity.rounded(
-                    LauncherPalette.surface,
-                    12,
-                    if (focused) LauncherPalette.accent else null,
+                view.background = if (focused) activity.glassRounded(
+                    activity.uiColor(R.color.launcher_glass_focus_panel),
+                    activity.uiDimen(R.dimen.radius_action),
+                    activity.uiColor(R.color.launcher_glass_focus_edge),
+                    activity.uiDimen(R.dimen.focus_ring_toolbar),
+                ) else activity.glassRounded(
+                    activity.uiColor(R.color.launcher_glass_toolbar_fill),
+                    activity.uiDimen(R.dimen.radius_action),
+                    activity.uiColor(R.color.launcher_glass_toolbar_edge),
                 )
             }
             setOnClickListener { onClose() }
         }
-        header.addView(closeButton, LayoutParams(-2, activity.dp(44)))
-        addView(header, LayoutParams(-1, activity.dp(52)))
+        header.addView(closeButton, LayoutParams(-2, activity.dp(activity.uiDimen(R.dimen.space_44))))
+        addView(header, LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_52))))
 
         grid = GridLayout(activity).apply {
             columnCount = columns
@@ -94,11 +104,11 @@ class AppMenuOverlay(
             addView(grid, ViewGroup.LayoutParams(-1, -2))
         }
         addView(scroll, LayoutParams(-1, 0, 1f).apply {
-            topMargin = activity.dp(14)
-            bottomMargin = activity.dp(8)
+            topMargin = activity.dp(activity.uiDimen(R.dimen.space_14))
+            bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_8))
         })
 
-        addView(activity.launcherLabel(footer(), 12, LauncherPalette.muted), LayoutParams(-1, -2))
+        addView(activity.launcherLabel(footer(), R.style.LauncherTextCaption), LayoutParams(-1, -2))
         renderTiles()
     }
 
@@ -151,8 +161,8 @@ class AppMenuOverlay(
             )
             val params = GridLayout.LayoutParams().apply {
                 width = activity.dp(tileWidthDp)
-                height = activity.dp(tileWidthDp * 9 / 16 + 34)
-                setMargins(activity.dp(4), activity.dp(4), activity.dp(4), activity.dp(5))
+                height = activity.dp(tileWidthDp * 9 / 16 + activity.uiDimen(R.dimen.space_34))
+                setMargins(activity.dp(activity.uiDimen(R.dimen.space_4)), activity.dp(activity.uiDimen(R.dimen.space_4)), activity.dp(activity.uiDimen(R.dimen.space_4)), activity.dp(activity.uiDimen(R.dimen.space_5)))
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED)
             }
             grid.addView(tile, params)

@@ -24,6 +24,7 @@ class LauncherOverlayController(
 ) {
     private var appMenu: AppMenuOverlay? = null
     private var settingsOverlay: LauncherSettingsOverlay? = null
+    private var imageCorrectionOverlay: ImageCorrectionOverlay? = null
     private var settingsMenu: SettingsDropdownMenu? = null
     private var returnFocus: View? = null
     private var returnToLauncherSettings = false
@@ -32,13 +33,17 @@ class LauncherOverlayController(
         get() = appMenu != null
 
     val hasSettingsOverlay: Boolean
-        get() = settingsOverlay != null
+        get() = settingsOverlay != null || imageCorrectionOverlay != null
 
     val hasBlockingOverlay: Boolean
-        get() = appMenu != null || settingsOverlay != null
+        get() = appMenu != null || settingsOverlay != null || imageCorrectionOverlay != null
 
     fun handleBack(): Boolean = when {
         appMenu != null -> { closeAppMenu(); true }
+        imageCorrectionOverlay != null -> {
+            if (imageCorrectionOverlay?.handleBack() == true) true
+            else { closeImageCorrection(); true }
+        }
         settingsOverlay != null -> { closeLauncherSettings(); true }
         settingsMenu?.isShowing == true -> { settingsMenu?.dismiss(); true }
         else -> false
@@ -64,13 +69,31 @@ class LauncherOverlayController(
         settingsMenu = SettingsDropdownMenu(
             activity = activity,
             onLauncherSettings = ::openLauncherSettings,
+            onImageCorrection = ::openImageCorrection,
             onProjectorSettings = onProjectorSettings,
             onAndroidSettings = onAndroidSettings,
         ).also { it.show(anchor) }
     }
 
+    private fun openImageCorrection() {
+        if (imageCorrectionOverlay != null || settingsOverlay != null || appMenu != null) return
+        onHideTooltip()
+        imageCorrectionOverlay = ImageCorrectionOverlay(activity).also { overlay ->
+            root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+            overlay.focusInitialItem()
+        }
+    }
+
+    private fun closeImageCorrection() {
+        val overlay = imageCorrectionOverlay ?: return
+        root.removeView(overlay)
+        overlay.close()
+        imageCorrectionOverlay = null
+        fallbackFocus.requestFocus()
+    }
+
     private fun openAppMenu(mode: AppMenuMode) {
-        if (appMenu != null || settingsOverlay != null) return
+        if (appMenu != null || settingsOverlay != null || imageCorrectionOverlay != null) return
         onHideTooltip()
         returnFocus = root.findFocus() ?: fallbackFocus
         appMenu = AppMenuOverlay(
@@ -96,7 +119,7 @@ class LauncherOverlayController(
     }
 
     private fun openLauncherSettings() {
-        if (settingsOverlay != null || appMenu != null) return
+        if (settingsOverlay != null || appMenu != null || imageCorrectionOverlay != null) return
         onHideTooltip()
         settingsOverlay = LauncherSettingsOverlay(
             activity = activity,

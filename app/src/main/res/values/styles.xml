@@ -1,12 +1,35 @@
 <resources>
     <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#64AAFF</item>
+        <item name="android:colorAccent">@color/launcher_accent</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#111318</item>
-        <item name="android:navigationBarColor">#111318</item>
-        <item name="android:statusBarColor">#111318</item>
+        <item name="android:windowBackground">@color/launcher_background</item>
+        <item name="android:navigationBarColor">@color/launcher_background</item>
+        <item name="android:statusBarColor">@color/launcher_background</item>
         <item name="android:windowNoTitle">true</item>
+    </style>
+    <style name="LauncherTextCaption">
+        <item name="android:textSize">@dimen/text_caption</item>
+        <item name="android:textColor">@color/launcher_text_secondary</item>
+    </style>
+    <style name="LauncherTextBody">
+        <item name="android:textSize">@dimen/text_body</item>
+        <item name="android:textColor">@color/launcher_text_primary</item>
+    </style>
+    <style name="LauncherTextSection">
+        <item name="android:textSize">@dimen/text_section</item>
+        <item name="android:textColor">@color/launcher_text_primary</item>
+    </style>
+    <style name="LauncherTextTitle">
+        <item name="android:textSize">@dimen/text_title</item>
+        <item name="android:textColor">@color/launcher_text_primary</item>
+    </style>
+    <style name="LauncherTextHeading">
+        <item name="android:textSize">@dimen/text_heading</item>
+        <item name="android:textColor">@color/launcher_text_primary</item>
+    </style>
+    <style name="LauncherTextClock" parent="@style/LauncherTextHeading">
+        <item name="android:textSize">@dimen/text_clock</item>
     </style>
 </resources>

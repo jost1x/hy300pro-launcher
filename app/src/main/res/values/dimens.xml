@@ -1,0 +1,37 @@
+<resources>
+    <!-- Spacing scale and component geometry, in dp. -->
+    <dimen name="space_1">1dp</dimen><dimen name="space_2">2dp</dimen><dimen name="space_3">3dp</dimen>
+    <dimen name="space_4">4dp</dimen><dimen name="space_5">5dp</dimen><dimen name="space_6">6dp</dimen>
+    <dimen name="space_7">7dp</dimen><dimen name="space_8">8dp</dimen><dimen name="space_9">9dp</dimen>
+    <dimen name="space_10">10dp</dimen><dimen name="space_11">11dp</dimen><dimen name="space_12">12dp</dimen>
+    <dimen name="space_14">14dp</dimen><dimen name="space_16">16dp</dimen><dimen name="space_18">18dp</dimen>
+    <dimen name="space_20">20dp</dimen><dimen name="space_22">22dp</dimen><dimen name="space_24">24dp</dimen><dimen name="space_25">25dp</dimen>
+    <dimen name="space_26">26dp</dimen><dimen name="space_27">27dp</dimen><dimen name="space_28">28dp</dimen>
+    <dimen name="space_30">30dp</dimen><dimen name="space_32">32dp</dimen><dimen name="space_34">34dp</dimen>
+    <dimen name="space_40">40dp</dimen><dimen name="space_44">44dp</dimen><dimen name="space_46">46dp</dimen>
+    <dimen name="space_48">48dp</dimen><dimen name="space_52">52dp</dimen><dimen name="space_54">54dp</dimen><dimen name="space_58">58dp</dimen>
+    <dimen name="space_60">60dp</dimen><dimen name="space_64">64dp</dimen><dimen name="space_84">84dp</dimen>
+    <dimen name="space_100">100dp</dimen><dimen name="space_136">136dp</dimen><dimen name="space_142">142dp</dimen>
+    <dimen name="space_252">252dp</dimen><dimen name="space_260">260dp</dimen>
+    <dimen name="safe_inset_horizontal">32dp</dimen><dimen name="safe_inset_vertical">24dp</dimen>
+    <dimen name="catalog_horizontal_inset">60dp</dimen><dimen name="catalog_min_width">430dp</dimen>
+    <dimen name="catalog_tile_base_width">142dp</dimen><dimen name="catalog_tile_gap">8dp</dimen>
+    <dimen name="home_tile_default_width">136dp</dimen><dimen name="home_shelf_width_inset">20dp</dimen>
+    <dimen name="home_shelf_min_width">360dp</dimen><dimen name="home_tile_gap">11dp</dimen>
+    <dimen name="home_tile_min_width">100dp</dimen>
+    <dimen name="radius_small">9dp</dimen><dimen name="radius_tile">10dp</dimen><dimen name="radius_row">11dp</dimen>
+    <dimen name="radius_surface">12dp</dimen><dimen name="radius_action">14dp</dimen><dimen name="radius_popup_inner">11dp</dimen>
+    <dimen name="radius_toolbar">30dp</dimen>
+    <dimen name="radius_dialog">22dp</dimen>
+    <dimen name="popup_inset">8dp</dimen>
+    <dimen name="icon_small">20dp</dimen><dimen name="icon_medium">22dp</dimen><dimen name="icon_large">25dp</dimen>
+    <dimen name="icon_input_shortcut">40dp</dimen><dimen name="icon_tile_app">64dp</dimen>
+    <dimen name="icon_status">27dp</dimen>
+    <dimen name="action_target">48dp</dimen><dimen name="focus_ring">4dp</dimen>
+    <dimen name="backdrop_blur_radius">7dp</dimen>
+    <dimen name="elevation_low">1dp</dimen><dimen name="elevation_focus">5dp</dimen><dimen name="elevation_action_focus">2dp</dimen><dimen name="elevation_toolbar">4dp</dimen><dimen name="elevation_menu">12dp</dimen>
+    <dimen name="focus_ring_toolbar">2dp</dimen>
+    <!-- TV text scale. Secondary labels use 16sp minimum for viewing distance. -->
+    <dimen name="text_caption">16sp</dimen><dimen name="text_body">16sp</dimen><dimen name="text_section">19sp</dimen>
+    <dimen name="text_title">22sp</dimen><dimen name="text_heading">26sp</dimen><dimen name="text_clock">23sp</dimen>
+</resources>
