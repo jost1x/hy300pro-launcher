@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".diagnostics.ImageBackendDiagnosticActivity"
+            android:exported="false" android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
+        <activity android:name=".diagnostics.DirectAccessDiagnosticActivity"
+            android:exported="false" android:screenOrientation="landscape" />
+    </application>
+</manifest>

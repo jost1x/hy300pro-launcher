@@ -10,3 +10,6 @@ local.properties
 *.jks
 *.keystore
 captura-*.png
+*.pk8
+*.p12
+*.pfx

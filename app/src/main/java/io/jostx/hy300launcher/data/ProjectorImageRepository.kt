@@ -1,6 +1,9 @@
 package io.jostx.hy300launcher.data
 
 import android.content.Context
+import android.content.Intent
+import io.jostx.hy300launcher.imagecontrol.FirmwareProperties
+import java.io.File
 import java.io.Closeable
 import java.io.IOException
 import kotlin.math.roundToInt
@@ -37,10 +40,12 @@ data class ProjectorImageState(
     }
 }
 
-/** Firmware bridge for the HY300 Pro's OEM image pipeline, accessed through its local root ADB daemon. */
+/** HY300 Pro image controls through the firmware HAL and our authenticated Binder service. */
 class ProjectorImageRepository(context: Context) : Closeable {
     private val appContext = context.applicationContext
-    private var adb: Adb? = null
+    private val imageControl = ImageControlClient(appContext)
+    var geometryUnavailableReason: String? = null
+        private set
     private var cachedState: ProjectorImageState? = null
 
     /** Returns the neutral virtual corner map for the current firmware zoom level. */
@@ -49,21 +54,12 @@ class ProjectorImageRepository(context: Context) : Closeable {
 
     @Synchronized
     fun readState(waitingForApproval: () -> Unit): ProjectorImageState {
-        val connection = rootConnection(waitingForApproval)
-        val raw = connection.shell(
-            "for p in ${PROPERTY_NAMES.joinToString(" ")}; do printf '%s=' \"\$p\"; getprop \"\$p\"; done; " +
-                "printf '__SYSFS__='; [ -e '$MANUAL_KEYSTONE_NODE' ] && echo yes || echo no; " +
-                "printf '__CONFIG__\\n'; cat /product/etc/config.ini 2>/dev/null",
-        )
-        val values = raw.lineSequence()
-            .takeWhile { it != "__CONFIG__" }
-            .mapNotNull { line ->
-                val split = line.indexOf('=')
-                if (split <= 0) null else line.substring(0, split) to line.substring(split + 1).trim()
-            }.toMap()
-        val config = raw.substringAfter("__CONFIG__\n", "")
-        val sysfsSupportsManual = raw.lineSequence().firstOrNull { it.startsWith("__SYSFS__=") }
-            ?.substringAfter('=') == "yes"
+        geometryUnavailableReason = try { imageControl.check(); null } catch (error: Exception) {
+            error.message ?: "El servicio de imagen no está disponible"
+        }
+        val values = PROPERTY_NAMES.associateWith { FirmwareProperties.get(it) }
+        val config = runCatching { File("/product/etc/config.ini").readText() }.getOrDefault("")
+        val sysfsSupportsManual = false // The verified HY300 Pro does not expose this node.
         fun int(name: String, default: Int = 0) = values[name]?.toIntOrNull() ?: default
         fun bool(name: String) = values[name] == "1" || values[name].equals("true", ignoreCase = true)
         val zoom = (20 - int("persist.sys.zoom_value", 20)).coerceIn(0, 20)
@@ -86,30 +82,19 @@ class ProjectorImageRepository(context: Context) : Closeable {
             manualKeystoneEnabled = bool("persist.sys.prj.keystone"),
             manualKeystoneValue = int("persist.sys.prj.manualkeystone").coerceIn(0, 90),
             corners = corners,
-            supportsZoom = readFlag(config, "screenZoom"),
+            supportsZoom = geometryUnavailableReason == null && readFlag(config, "screenZoom"),
             supportsAutoKeystone = readFlag(config, "autoKeystone"),
             supportsManualKeystone = readFlag(config, "manualKeystone") && sysfsSupportsManual,
-            supportsFourCorner = true,
+            supportsFourCorner = geometryUnavailableReason == null,
         ).also { cachedState = it }
     }
 
     @Synchronized
     fun setZoom(value: Int, waitingForApproval: () -> Unit): ProjectorImageState {
         val zoom = value.coerceIn(0, 20)
-        val connection = rootConnection(waitingForApproval)
-        val current = cachedState ?: readState(waitingForApproval)
+        val current = readState(waitingForApproval)
         val corners = scaleCorners(current.corners, current.zoom, zoom)
-        val matrix = matrixForCorners(corners)
-        val overscan = 80 + zoom
-        val properties = cornerProperties(corners).joinToString("; ") { (name, number) -> "setprop $name $number" }
-        val result = connection.shell(
-            "setprop persist.sys.zoom_value ${20 - zoom}; " +
-                "setprop persist.vendor.overscan.main 'overscan $overscan,$overscan,$overscan,$overscan'; " +
-                "$properties; " +
-                "${surfaceMatrixCommand(matrix)}; " +
-                "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'",
-        )
-        verifySurfaceMatrixResult(result)
+        imageControl.apply(matrixForCorners(corners), zoom)
         val state = readState(waitingForApproval)
         if (state.zoom != zoom) throw IOException("El firmware no confirmó el valor de zoom")
         return state
@@ -128,7 +113,6 @@ class ProjectorImageRepository(context: Context) : Closeable {
         deltas: Map<ProjectorCorner, Pair<Int, Int>>,
         waitingForApproval: () -> Unit,
     ): ProjectorImageState {
-        val connection = rootConnection(waitingForApproval)
         val state = cachedState ?: readState(waitingForApproval)
         val next = state.corners.toMutableMap()
         deltas.forEach { (corner, delta) ->
@@ -138,12 +122,7 @@ class ProjectorImageRepository(context: Context) : Closeable {
                 y = (current.y + delta.second).coerceIn(0, 500),
             )
         }
-        val matrix = matrixForCorners(next)
-        val properties = cornerProperties(next).joinToString("; ") { (name, number) -> "setprop $name $number" }
-        val command = "$properties; ${surfaceMatrixCommand(matrix)}; " +
-            "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'"
-        val result = connection.shell(command)
-        verifySurfaceMatrixResult(result)
+        imageControl.apply(matrixForCorners(next))
         val verified = readState(waitingForApproval)
         if (verified.corners != next) throw IOException("El firmware no confirmó el movimiento de la esquina")
         return verified.also { cachedState = it }
@@ -157,14 +136,7 @@ class ProjectorImageRepository(context: Context) : Closeable {
         require(ProjectorCorner.entries.all { corner ->
             corners[corner]?.let { it.x in 0..500 && it.y in 0..500 } == true
         }) { "El ajuste calculado está fuera del rango permitido." }
-        val connection = rootConnection(waitingForApproval)
-        val matrix = matrixForCorners(corners)
-        val properties = cornerProperties(corners).joinToString("; ") { (name, number) -> "setprop $name $number" }
-        val result = connection.shell(
-            "$properties; ${surfaceMatrixCommand(matrix)}; " +
-                "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'",
-        )
-        verifySurfaceMatrixResult(result)
+        imageControl.apply(matrixForCorners(corners))
         val verified = readState(waitingForApproval)
         if (verified.corners != corners) throw IOException("El firmware no confirmó las cuatro esquinas")
         return verified.also { cachedState = it }
@@ -176,31 +148,27 @@ class ProjectorImageRepository(context: Context) : Closeable {
         value: Int,
         waitingForApproval: () -> Unit,
     ): ProjectorImageState {
-        val connection = rootConnection(waitingForApproval)
-        if (!readState(waitingForApproval).supportsManualKeystone) {
-            throw IOException("El firmware no expone el control manual de trapecio")
-        }
-        val level = value.coerceIn(0, 90)
-        connection.shell(
-            "setprop persist.sys.prj.keystone ${if (enabled) 1 else 0}; " +
-                "setprop persist.sys.prj.manualkeystone $level; " +
-                "echo $level > '$MANUAL_KEYSTONE_NODE'",
-        )
-        return readState(waitingForApproval)
+        throw IOException("El firmware no expone el control manual de trapecio")
     }
 
     @Synchronized
     fun setAutoKeystone(enabled: Boolean, waitingForApproval: () -> Unit): ProjectorImageState {
-        val connection = rootConnection(waitingForApproval)
-        if (enabled) {
-            connection.shell(
-                "setprop persist.sys.tpryauto 1; " +
-                    "setprop sys.temp_pass 1; setprop sys.auto_report_angle 1; " +
-                    "am broadcast --user 0 -a android.intent.hotack_keystone --ei ratio 1; " +
-                    "am broadcast --user 0 -a com.htc.auto_keystone",
-            )
-        } else {
-            connection.shell("setprop persist.sys.tpryauto 0")
+        if (!readState(waitingForApproval).supportsAutoKeystone) {
+            throw IOException("La corrección automática no está disponible en este firmware")
+        }
+        val keys = listOf("persist.sys.tpryauto", "sys.temp_pass", "sys.auto_report_angle")
+        val initial = keys.associateWith { FirmwareProperties.get(it) }
+        try {
+            FirmwareProperties.set(keys[0], if (enabled) "1" else "0")
+            if (enabled) {
+                FirmwareProperties.set(keys[1], "1")
+                FirmwareProperties.set(keys[2], "1")
+                appContext.sendBroadcast(Intent("android.intent.hotack_keystone").putExtra("ratio", 1))
+                appContext.sendBroadcast(Intent("com.htc.auto_keystone"))
+            }
+        } catch (error: Exception) {
+            initial.forEach { (key, value) -> FirmwareProperties.set(key, value) }
+            throw IOException("No se pudo confirmar la corrección automática", error)
         }
         val state = readState(waitingForApproval)
         if (state.autoKeystone != enabled) throw IOException("El firmware no confirmó la corrección automática")
@@ -209,42 +177,20 @@ class ProjectorImageRepository(context: Context) : Closeable {
 
     @Synchronized
     fun readOrientation(waitingForApproval: () -> Unit): ProjectorProjectionMode =
-        orientationResult(rootConnection(waitingForApproval), "read").first
+        orientationOrder(FirmwareProperties.get("persist.sys.prj.type"))[ProjectorOrientationBridge().read()]
 
     @Synchronized
     fun setOrientation(mode: ProjectorProjectionMode, waitingForApproval: () -> Unit): ProjectorProjectionMode {
-        val connection = rootConnection(waitingForApproval)
-        val (_, panelType) = orientationResult(connection, "read")
-        val raw = orientationOrder(panelType).indexOf(mode)
-        val (verified, _) = orientationResult(connection, "set $raw")
+        val order = orientationOrder(FirmwareProperties.get("persist.sys.prj.type"))
+        val verified = order[ProjectorOrientationBridge().apply(order.indexOf(mode))]
         if (verified != mode) throw IOException("El panel no confirmó la orientación solicitada")
-        // Notify the automatic correction service, as the firmware does after a panel change.
-        val notification = connection.shell(
-            "if [ \"\$" + "(getprop persist.sys.tpryauto)\" = 1 ]; then " +
-                "am broadcast --user 0 -a android.intent.projective_mode; fi",
-        )
-        if (notification.contains("Exception") || notification.contains("Error")) {
-            throw IOException("Orientación aplicada; no se pudo avisar a la corrección automática")
+        if (FirmwareProperties.get("persist.sys.tpryauto") == "1") {
+            try { appContext.sendBroadcast(Intent("android.intent.projective_mode")) }
+            catch (error: Exception) {
+                throw IOException("Orientación aplicada; no se pudo avisar a la corrección automática", error)
+            }
         }
         return verified
-    }
-
-    private fun orientationResult(connection: Adb, operation: String): Pair<ProjectorProjectionMode, String> {
-        // app_process loads our own APK; no OEM application classes or components are used.
-        val apkPath = appContext.applicationInfo.sourceDir.replace("'", "'\"'\"'")
-        val output = connection.shell(
-            "CLASSPATH='$apkPath' app_process /system/bin " +
-                "io.jostx.hy300launcher.data.ProjectorOrientationBridge $operation",
-        )
-        val lines = output.lineSequence().map { it.trim() }.toList()
-        lines.firstOrNull { it.startsWith("PANEL_ERROR=") }?.let {
-            throw IOException(it.substringAfter('='))
-        }
-        val raw = lines.firstOrNull { it.startsWith("PANEL_MODE=") }?.substringAfter('=')?.toIntOrNull()
-        val panelType = lines.firstOrNull { it.startsWith("PANEL_TYPE=") }?.substringAfter('=') ?: ""
-        val mode = raw?.let { orientationOrder(panelType).getOrNull(it) }
-            ?: throw IOException("El servicio de orientación no está disponible en este firmware")
-        return mode to panelType
     }
 
     private fun orientationOrder(panelType: String): List<ProjectorProjectionMode> =
@@ -255,37 +201,7 @@ class ProjectorImageRepository(context: Context) : Closeable {
 
     @Synchronized
     override fun close() {
-        adb?.close()
-        adb = null
         cachedState = null
-    }
-
-    private fun rootConnection(waitingForApproval: () -> Unit): Adb {
-        adb?.let { existing ->
-            if (existing.shell("id -u").trim() == "0") return existing
-            existing.close()
-            adb = null
-        }
-        val connected = Adb.connect(appContext, ADB_APPROVAL_TIMEOUT_MS) { waitingForApproval() }
-        val uid = connected.shell("id -u").trim()
-        if (uid != "0") {
-            connected.close()
-            throw IOException("El control requiere el acceso de sistema del firmware")
-        }
-        adb = connected
-        return connected
-    }
-
-    private fun surfaceMatrixCommand(matrix: List<Int>): String {
-        require(matrix.size == 8)
-        val args = matrix.joinToString(" ") { "f ${it / 1000.0}" }
-        return "service call SurfaceFlinger 1050 $args"
-    }
-
-    private fun verifySurfaceMatrixResult(result: String) {
-        if (result.contains("Exception", ignoreCase = true) || result.contains("error", ignoreCase = true)) {
-            throw IOException("SurfaceFlinger rechazó la corrección de imagen")
-        }
     }
 
     /** Apply the zoom as a uniform scale around the display center to the current four-corner shape. */
@@ -318,17 +234,6 @@ class ProjectorImageRepository(context: Context) : Closeable {
 
     private fun neutralCorners(inset: Int) = ProjectorCorner.entries.associateWith { ProjectorPoint(inset, inset) }
 
-    private fun cornerProperties(corners: Map<ProjectorCorner, ProjectorPoint>) = listOf(
-        "persist.display.keystone_ltx" to corners.getValue(ProjectorCorner.TOP_LEFT).x,
-        "persist.display.keystone_lty" to corners.getValue(ProjectorCorner.TOP_LEFT).y,
-        "persist.display.keystone_rtx" to corners.getValue(ProjectorCorner.TOP_RIGHT).x,
-        "persist.display.keystone_rty" to corners.getValue(ProjectorCorner.TOP_RIGHT).y,
-        "persist.display.keystone_rbx" to corners.getValue(ProjectorCorner.BOTTOM_RIGHT).x,
-        "persist.display.keystone_rby" to corners.getValue(ProjectorCorner.BOTTOM_RIGHT).y,
-        "persist.display.keystone_lbx" to corners.getValue(ProjectorCorner.BOTTOM_LEFT).x,
-        "persist.display.keystone_lby" to corners.getValue(ProjectorCorner.BOTTOM_LEFT).y,
-    )
-
     private fun matrixForCorners(corners: Map<ProjectorCorner, ProjectorPoint>): List<Int> {
         fun point(corner: ProjectorCorner) = corners.getValue(corner)
         val tl = point(ProjectorCorner.TOP_LEFT)
@@ -346,8 +251,6 @@ class ProjectorImageRepository(context: Context) : Closeable {
     }
 
     companion object {
-        private const val ADB_APPROVAL_TIMEOUT_MS = 12_000
-        private const val MANUAL_KEYSTONE_NODE = "/sys/devices/ff140000.i2c/i2c-2/2-001b/manual_Keystone_mode"
         private val PROPERTY_NAMES = listOf(
             "persist.sys.zoom_value",
             "persist.sys.tpryauto",

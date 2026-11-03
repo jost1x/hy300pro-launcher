@@ -1,15 +1,14 @@
 package io.jostx.hy300launcher.data;
 
-import java.lang.reflect.InvocationTargetException;
 
-/** Standalone root app_process entry point; uses only the firmware HAL, never the OEM APK. */
+/** Direct HY300 Pro HAL access from the launcher process; no OEM APK or ADB. */
 public final class ProjectorOrientationBridge {
     private static final String SERVICE = "vendor.aw.homlet.tvsystem.tvserver@1.0::ITvServer";
     private static final String PROPERTY = "persist.sys.panelvalue";
     private final Class<?> parcelClass = Class.forName("android.os.HwParcel");
     private final Object service;
 
-    private ProjectorOrientationBridge() throws Exception {
+    public ProjectorOrientationBridge() throws Exception {
         service = Class.forName("android.os.HwBinder")
                 .getMethod("getService", String.class, String.class, boolean.class)
                 .invoke(null, SERVICE, "default", false);
@@ -35,7 +34,7 @@ public final class ProjectorOrientationBridge {
         }
     }
 
-    private int read() throws Exception {
+    public int read() throws Exception {
         int mode = transact(128, null);
         if (mode < 0 || mode > 3) throw new IllegalStateException("El panel no devolvió una orientación válida");
         return mode;
@@ -52,7 +51,8 @@ public final class ProjectorOrientationBridge {
         if (!property(PROPERTY).equals(value)) throw new IllegalStateException("No se guardó la orientación");
     }
 
-    private int apply(int mode) throws Exception {
+    public int apply(int mode) throws Exception {
+        if (mode < 0 || mode > 3) throw new IllegalArgumentException("Modo fuera de rango");
         int initial = read();
         String initialProperty = property(PROPERTY);
         try {
@@ -76,28 +76,4 @@ public final class ProjectorOrientationBridge {
         }
     }
 
-    public static void main(String[] args) {
-        try {
-            if (android.os.Process.myUid() != 0) throw new IllegalStateException("Se requiere el puente de sistema");
-            if (args.length == 0 || !(args[0].equals("read") || args[0].equals("set"))) {
-                throw new IllegalArgumentException("Operación de orientación inválida");
-            }
-            ProjectorOrientationBridge bridge = new ProjectorOrientationBridge();
-            int mode;
-            if (args[0].equals("set")) {
-                if (args.length != 2) throw new IllegalArgumentException("Falta el modo");
-                int requested = Integer.parseInt(args[1]);
-                if (requested < 0 || requested > 3) throw new IllegalArgumentException("Modo fuera de rango");
-                mode = bridge.apply(requested);
-            } else {
-                mode = bridge.read();
-            }
-            System.out.println("PANEL_MODE=" + mode);
-            System.out.println("PANEL_TYPE=" + property("persist.sys.prj.type"));
-        } catch (Exception error) {
-            Throwable cause = error instanceof InvocationTargetException ? error.getCause() : error;
-            System.out.println("PANEL_ERROR=" + cause.getClass().getSimpleName() + ": " + cause.getMessage());
-            System.exit(1);
-        }
-    }
 }

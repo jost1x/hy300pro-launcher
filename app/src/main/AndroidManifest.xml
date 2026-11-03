@@ -6,6 +6,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <queries>
+        <package android:name="io.jostx.hy300launcher.imagecontrol" />
         <package android:name="com.softwinner.awsource" />
         <package android:name="com.htc.htcsettings" />
         <intent>

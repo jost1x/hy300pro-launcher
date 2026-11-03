@@ -26,7 +26,7 @@ import io.jostx.hy300launcher.data.ProjectorProjectionMode
 import java.io.Closeable
 import java.util.concurrent.Executors
 
-/** Native image controls backed by the HY300 Pro firmware's local ADB interface. */
+/** Native image controls backed by the HY300 Pro HAL and our Binder companion. */
 class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(activity), Closeable {
     private val repository = ProjectorImageRepository(activity)
     private val worker = Executors.newSingleThreadExecutor()
@@ -315,11 +315,11 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
     override fun focusSearch(focused: View?, direction: Int): View? =
         FocusFinder.getInstance().findNextFocus(this, focused, direction) ?: focused
 
-    private fun loadState() = runOnWorker("Conectando…") { repository.readState(::showApprovalPrompt) }
+    private fun loadState() = runOnWorker("Conectando…") { repository.readState(::showConnectionProgress) }
 
     private fun openCornerEditor() {
         val current = state ?: return showUnavailable("Espera a que se lea el estado del proyector.")
-        if (!current.supportsFourCorner) return showUnavailable("El firmware no ofrece ajuste de cuatro esquinas.")
+        if (!current.supportsFourCorner) return showUnavailable(repository.geometryUnavailableReason ?: "El firmware no ofrece ajuste de cuatro esquinas.")
         selectMode(2)
         cornerSessionStart = current.corners.toMap()
         draftCorners = current.corners.toMutableMap()
@@ -457,7 +457,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         val current = state ?: return showUnavailable("Espera a que se lea el estado del proyector.")
         if (!current.supportsAutoKeystone) return showUnavailable("La corrección automática no está habilitada en este firmware.")
         runOnWorker("Aplicando corrección automática…") {
-            repository.setAutoKeystone(!current.autoKeystone, ::showApprovalPrompt)
+            repository.setAutoKeystone(!current.autoKeystone, ::showConnectionProgress)
         }
     }
 
@@ -511,12 +511,12 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
             var actual: ProjectorProjectionMode? = null
             var failure: String? = null
             try {
-                actual = if (requested == null) repository.readOrientation(::showApprovalPrompt)
-                    else repository.setOrientation(requested, ::showApprovalPrompt)
+                actual = if (requested == null) repository.readOrientation(::showConnectionProgress)
+                    else repository.setOrientation(requested, ::showConnectionProgress)
             } catch (error: Exception) {
                 failure = error.message ?: "No se pudo confirmar la orientación."
                 // A partial failure must not leave the previous mode marked as current.
-                actual = runCatching { repository.readOrientation(::showApprovalPrompt) }.getOrNull()
+                actual = runCatching { repository.readOrientation(::showConnectionProgress) }.getOrNull()
             }
             main.post {
                 if (closing) return@post
@@ -540,7 +540,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         val current = state ?: return
         if (!current.supportsZoom) {
             zoomSlider.progress = current.zoom
-            return showUnavailable("El firmware no ofrece zoom de imagen.")
+            return showUnavailable(repository.geometryUnavailableReason ?: "El firmware no ofrece zoom de imagen.")
         }
         pendingZoom = value.coerceIn(0, 20)
         zoomValue.text = "$pendingZoom / 20"
@@ -558,7 +558,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         status.text = "Aplicando zoom…"
         worker.execute {
             try {
-                val updated = repository.setZoom(target, ::showApprovalPrompt)
+                val updated = repository.setZoom(target, ::showConnectionProgress)
                 main.post {
                     state = updated
                     busy = false
@@ -620,7 +620,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         cornerStatus?.text = "Restaurando ajuste inicial…"
         worker.execute {
             try {
-                val updated = repository.setCorners(original, ::showApprovalPrompt)
+                val updated = repository.setCorners(original, ::showConnectionProgress)
                 main.post {
                     state = updated
                     cornerBatchInFlight = false
@@ -688,7 +688,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         cornerStatus?.text = "Aplicando…"
         worker.execute {
             try {
-                val updated = repository.adjustCorners(deltas, ::showApprovalPrompt)
+                val updated = repository.adjustCorners(deltas, ::showConnectionProgress)
                 main.post {
                     cornerBatchInFlight = false
                     if (batchId == cornerBatchId && !closing) {
@@ -778,7 +778,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
                     state = updated
                     pendingZoom = updated.zoom
                     busy = false
-                    status.text = "Conectado"
+                    status.text = if (updated.supportsFourCorner) "Conectado" else "Servicio no disponible"
                     zoomValue.text = "${updated.zoom} / 20"
                     zoomSlider.progress = updated.zoom
                     zoomSlider.isEnabled = updated.supportsZoom
@@ -791,7 +791,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
                     manualRow.setSubtitle(if (updated.supportsManualKeystone) "Ajuste vertical de la imagen" else "No disponible en este firmware")
                     footer.text = when {
                         editingCorners -> "${cornerLabel(ProjectorImageState.CORNER_ORDER[selectedCorner])}: usa los controles para moverla."
-                        !updated.supportsFourCorner -> "El firmware no ofrece ajuste de cuatro esquinas."
+                        !updated.supportsFourCorner -> repository.geometryUnavailableReason ?: "El firmware no ofrece ajuste de cuatro esquinas."
                         else -> "El zoom conserva la forma definida por las cuatro esquinas."
                     }
                 }
@@ -806,10 +806,10 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         }
     }
 
-    private fun showApprovalPrompt() {
+    private fun showConnectionProgress() {
         main.post {
-            status.text = "Autoriza depuración"
-            footer.text = "Acepta en el proyector la solicitud de depuración para usar estos controles."
+            status.text = "Conectando…"
+            footer.text = "Conectando con el servicio de imagen del proyector…"
         }
     }
 

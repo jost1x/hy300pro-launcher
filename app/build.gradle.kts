@@ -16,6 +16,12 @@ android {
 		versionName = "1.0"
 	}
 
+	buildFeatures { aidl = true }
+	sourceSets.getByName("main") {
+		aidl.srcDir(rootProject.file("shared/aidl"))
+		java.srcDir(rootProject.file("shared/java"))
+	}
+
 	compileOptions {
 		sourceCompatibility = JavaVersion.VERSION_17
 		targetCompatibility = JavaVersion.VERSION_17
