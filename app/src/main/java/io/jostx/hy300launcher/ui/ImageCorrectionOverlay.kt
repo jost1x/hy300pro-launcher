@@ -125,6 +125,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
             Triple(R.drawable.ic_monitor_play, "Automática", "Ajusta la geometría disponible"),
             Triple(R.drawable.ic_sliders, "Trapecio manual", "Ajuste manual no expuesto por el firmware"),
             Triple(R.drawable.ic_layout_grid, "Cuatro esquinas", "Calibra en vivo con retícula 16:9"),
+            Triple(R.drawable.ic_sliders, "Orientación", "Frontal, trasera, techo y techo trasera"),
         )
         modeData.forEachIndexed { index, (icon, name, detail) ->
             val row = ModeRow(activity, icon, name, detail) {
@@ -132,6 +133,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
                     0 -> toggleAutoKeystone()
                     1 -> showUnavailable("El firmware no expone el control manual de trapecio en este equipo.")
                     2 -> openCornerEditor()
+                    3 -> openProjectionOrientation()
                 }
             }
             modes += row
@@ -407,6 +409,30 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         if (!current.supportsAutoKeystone) return showUnavailable("La corrección automática no está habilitada en este firmware.")
         runOnWorker("Aplicando corrección automática…") {
             repository.setAutoKeystone(!current.autoKeystone, ::showApprovalPrompt)
+        }
+    }
+
+    private fun openProjectionOrientation() {
+        if (busy) return
+        busy = true
+        status.text = "Abriendo orientación…"
+        worker.execute {
+            try {
+                repository.openProjectionOrientation(::showApprovalPrompt)
+                main.post {
+                    busy = false
+                    status.text = "Orientación abierta"
+                    footer.text = "Selector del HY300 Pro: frontal, trasera espejada, techo o techo trasera."
+                }
+            } catch (error: Exception) {
+                main.post {
+                    busy = false
+                    status.text = "No disponible"
+                    val detail = error.message ?: "No se pudo abrir la orientación del proyector."
+                    footer.text = detail
+                    Toast.makeText(activity, detail, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 

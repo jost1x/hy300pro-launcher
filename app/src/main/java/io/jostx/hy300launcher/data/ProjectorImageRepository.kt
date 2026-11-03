@@ -205,6 +205,18 @@ class ProjectorImageRepository(context: Context) : Closeable {
         return state
     }
 
+    /** Opens the firmware's own four-mode orientation selector through the local root ADB bridge. */
+    @Synchronized
+    fun openProjectionOrientation(waitingForApproval: () -> Unit) {
+        val connection = rootConnection(waitingForApproval)
+        val result = connection.shell(
+            "am start --user 0 -n com.htc.htcsettings/com.htc.activity.ProjectionModeActivity",
+        )
+        if (result.contains("Error:", ignoreCase = true) || result.contains("Exception", ignoreCase = true)) {
+            throw IOException("No se pudo abrir el selector de orientación del firmware")
+        }
+    }
+
     @Synchronized
     override fun close() {
         adb?.close()

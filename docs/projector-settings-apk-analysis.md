@@ -62,6 +62,8 @@ El APK OEM ejecuta estas operaciones con propiedades privadas (`persist.sys.*` /
 
 El launcher incluye una pantalla nativa de **Imagen** con selección de modo y zoom mediante slider D-pad. El modo Cuatro esquinas abre un editor con retícula geométrica 16:9. Los valores de esquina y zoom se envían al firmware a través del backend ADB local. El trapecio manual queda deshabilitado porque falta el nodo sysfs requerido; la corrección automática aún no tiene efecto óptico confirmado en esta unidad.
 
+La pantalla Imagen también incluye **Orientación**, que abre el selector OEM del HY300 Pro mediante el ADB local. En la unidad verificada, el firmware presenta cuatro modos predefinidos: proyección frontal, trasera, frontal de techo y trasera de techo. No ofrece ángulos independientes de 90° o 270° en ese selector; el launcher conserva los nombres y el comportamiento del firmware en lugar de presentar grados que no están expuestos.
+
 Red, Wi-Fi, Bluetooth, fecha/hora, idioma, administrador de aplicaciones, volumen, tono de teclas y opciones generales del dispositivo quedan en Ajustes de Android. Algunas aparecen dentro de las pantallas OEM, pero usan `Settings.System`, `AudioManager` o servicios Android estándar y no justifican duplicarlas en el launcher. Los modos de salida de audio que escriben propiedades privadas `media.cfg.*` también quedan fuera del alcance elegido.
 
 El menú del launcher ya separa “Ajustes Android” de “Ajustes del proyector”; este último entra directamente a `ProjectionActivity` en vez de la portada `HomeActivity`, que mezcla ambas categorías. Por ahora esa pantalla es OEM; los controles nativos se portarán uno por uno solo cuando se haya confirmado su backend en el firmware del HY300 Pro.
