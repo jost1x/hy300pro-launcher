@@ -12,6 +12,8 @@ enum class ProjectorCorner(val propertySuffix: String) {
     BOTTOM_LEFT("lbx"),
 }
 
+enum class ProjectorProjectionMode { FRONT, REAR, CEILING, REAR_CEILING }
+
 data class ProjectorPoint(val x: Int, val y: Int)
 
 data class ProjectorImageState(
@@ -205,17 +207,51 @@ class ProjectorImageRepository(context: Context) : Closeable {
         return state
     }
 
-    /** Opens the firmware's own four-mode orientation selector through the local root ADB bridge. */
     @Synchronized
-    fun openProjectionOrientation(waitingForApproval: () -> Unit) {
+    fun readOrientation(waitingForApproval: () -> Unit): ProjectorProjectionMode =
+        orientationResult(rootConnection(waitingForApproval), "read").first
+
+    @Synchronized
+    fun setOrientation(mode: ProjectorProjectionMode, waitingForApproval: () -> Unit): ProjectorProjectionMode {
         val connection = rootConnection(waitingForApproval)
-        val result = connection.shell(
-            "am start --user 0 -n com.htc.htcsettings/com.htc.activity.ProjectionModeActivity",
+        val (_, panelType) = orientationResult(connection, "read")
+        val raw = orientationOrder(panelType).indexOf(mode)
+        val (verified, _) = orientationResult(connection, "set $raw")
+        if (verified != mode) throw IOException("El panel no confirmó la orientación solicitada")
+        // Notify the automatic correction service, as the firmware does after a panel change.
+        val notification = connection.shell(
+            "if [ \"\$" + "(getprop persist.sys.tpryauto)\" = 1 ]; then " +
+                "am broadcast --user 0 -a android.intent.projective_mode; fi",
         )
-        if (result.contains("Error:", ignoreCase = true) || result.contains("Exception", ignoreCase = true)) {
-            throw IOException("No se pudo abrir el selector de orientación del firmware")
+        if (notification.contains("Exception") || notification.contains("Error")) {
+            throw IOException("Orientación aplicada; no se pudo avisar a la corrección automática")
         }
+        return verified
     }
+
+    private fun orientationResult(connection: Adb, operation: String): Pair<ProjectorProjectionMode, String> {
+        // app_process loads our own APK; no OEM application classes or components are used.
+        val apkPath = appContext.applicationInfo.sourceDir.replace("'", "'\"'\"'")
+        val output = connection.shell(
+            "CLASSPATH='$apkPath' app_process /system/bin " +
+                "io.jostx.hy300launcher.data.ProjectorOrientationBridge $operation",
+        )
+        val lines = output.lineSequence().map { it.trim() }.toList()
+        lines.firstOrNull { it.startsWith("PANEL_ERROR=") }?.let {
+            throw IOException(it.substringAfter('='))
+        }
+        val raw = lines.firstOrNull { it.startsWith("PANEL_MODE=") }?.substringAfter('=')?.toIntOrNull()
+        val panelType = lines.firstOrNull { it.startsWith("PANEL_TYPE=") }?.substringAfter('=') ?: ""
+        val mode = raw?.let { orientationOrder(panelType).getOrNull(it) }
+            ?: throw IOException("El servicio de orientación no está disponible en este firmware")
+        return mode to panelType
+    }
+
+    private fun orientationOrder(panelType: String): List<ProjectorProjectionMode> =
+        if (panelType.equals("t03", ignoreCase = true)) listOf(
+            ProjectorProjectionMode.REAR_CEILING, ProjectorProjectionMode.CEILING,
+            ProjectorProjectionMode.FRONT, ProjectorProjectionMode.REAR,
+        ) else ProjectorProjectionMode.entries.toList()
 
     @Synchronized
     override fun close() {

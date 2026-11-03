@@ -22,6 +22,7 @@ import io.jostx.hy300launcher.R
 import io.jostx.hy300launcher.data.ProjectorCorner
 import io.jostx.hy300launcher.data.ProjectorImageRepository
 import io.jostx.hy300launcher.data.ProjectorImageState
+import io.jostx.hy300launcher.data.ProjectorProjectionMode
 import java.io.Closeable
 import java.util.concurrent.Executors
 
@@ -53,6 +54,10 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
     private var cornerSessionEnding = false
     private var cornerSessionEndAction: CornerSessionEndAction? = null
     private lateinit var headerView: LinearLayout
+    private var orientationPane: LinearLayout? = null
+    private var editingOrientation = false
+    private var orientationMode: ProjectorProjectionMode? = null
+    private val orientationRows = linkedMapOf<ProjectorProjectionMode, ModeRow>()
     private var editingCorners = false
     private var state: ProjectorImageState? = null
     private var selectedMode = -1
@@ -99,7 +104,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         }
         val titleBlock = LinearLayout(activity).apply { orientation = VERTICAL }
         headerTitle = activity.launcherLabel("Imagen", R.style.LauncherTextHeading, bold = true)
-        headerSubtitle = activity.launcherLabel("Zoom y corrección de geometría", R.style.LauncherTextBody).apply {
+        headerSubtitle = activity.launcherLabel("Ajusta la forma, la orientación y el tamaño", R.style.LauncherTextBody).apply {
                 setTextColor(activity.uiColor(R.color.launcher_text_secondary))
             }
         titleBlock.addView(headerTitle)
@@ -118,14 +123,29 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         }
 
         val controls = LinearLayout(activity).apply {
-            orientation = VERTICAL
+            orientation = HORIZONTAL
             clipChildren = false
         }
+        fun column(title: String) = LinearLayout(activity).apply {
+            orientation = VERTICAL
+            clipChildren = false
+            addView(activity.launcherLabel(title, R.style.LauncherTextBody, bold = true).apply {
+                setTextColor(activity.uiColor(R.color.launcher_text_secondary))
+            }, LayoutParams(-1, -2).apply {
+                bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_12))
+            })
+        }
+        val geometry = column("Geometría")
+        val presentation = column("Orientación y tamaño")
+        controls.addView(geometry, LayoutParams(0, -2, 1.1f))
+        controls.addView(presentation, LayoutParams(0, -2, 1f).apply {
+            leftMargin = activity.dp(activity.uiDimen(R.dimen.space_24))
+        })
         val modeData = listOf(
-            Triple(R.drawable.ic_monitor_play, "Automática", "Ajusta la geometría disponible"),
-            Triple(R.drawable.ic_sliders, "Trapecio manual", "Ajuste manual no expuesto por el firmware"),
-            Triple(R.drawable.ic_layout_grid, "Cuatro esquinas", "Calibra en vivo con retícula 16:9"),
-            Triple(R.drawable.ic_sliders, "Orientación", "Frontal, trasera, techo y techo trasera"),
+            Triple(R.drawable.ic_monitor_play, "Corrección automática", "Consultando disponibilidad…"),
+            Triple(R.drawable.ic_sliders, "Trapecio manual", "Consultando disponibilidad…"),
+            Triple(R.drawable.ic_layout_grid, "Cuatro esquinas", "Coloca cada esquina con la retícula 16:9"),
+            Triple(R.drawable.ic_sliders, "Modo de proyección", "Frontal, espejo y techo · ajuste directo"),
         )
         modeData.forEachIndexed { index, (icon, name, detail) ->
             val row = ModeRow(activity, icon, name, detail) {
@@ -136,20 +156,23 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
                     3 -> openProjectionOrientation()
                 }
             }
+            row.id = View.generateViewId()
             modes += row
-            controls.addView(
-                row,
-                LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_54))).apply {
-                    topMargin = activity.dp(activity.uiDimen(if (index == 0) R.dimen.space_6 else R.dimen.space_4))
-                },
-            )
             if (index == 1) manualRow = row
         }
+
+        // Preserve the firmware action indices while putting manual calibration first visually.
+        listOf(2, 0, 1).forEachIndexed { position, index ->
+            geometry.addView(modes[index], LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_84))).apply {
+                if (position > 0) topMargin = activity.dp(activity.uiDimen(R.dimen.space_8))
+            })
+        }
+        presentation.addView(modes[3], LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_84))))
 
         val zoom = LinearLayout(activity).apply {
             orientation = VERTICAL
             setPadding(activity.dp(activity.uiDimen(R.dimen.space_16)), activity.dp(activity.uiDimen(R.dimen.space_12)), activity.dp(activity.uiDimen(R.dimen.space_16)), activity.dp(activity.uiDimen(R.dimen.space_12)))
-            background = activity.rounded(activity.uiColor(R.color.launcher_action_surface), activity.uiDimen(R.dimen.radius_surface))
+            background = activity.rounded(activity.uiColor(R.color.launcher_surface), activity.uiDimen(R.dimen.radius_action) + activity.uiDimen(R.dimen.space_16))
         }
         val zoomHeader = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
         zoomHeader.addView(activity.launcherLabel("Zoom", R.style.LauncherTextBody, bold = true), LayoutParams(0, -2, 1f))
@@ -157,6 +180,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         zoomHeader.addView(zoomValue)
         zoom.addView(zoomHeader, LayoutParams(-1, -2))
         zoomSlider = SeekBar(activity).apply {
+            id = View.generateViewId()
             max = 20
             progress = 0
             keyProgressIncrement = 1
@@ -175,10 +199,10 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
             background = activity.rounded(activity.uiColor(R.color.launcher_action_surface), activity.uiDimen(R.dimen.radius_action))
             setOnFocusChangeListener { view, focused ->
                 view.background = activity.rounded(
-                    if (focused) activity.uiColor(R.color.launcher_glass_focus_panel) else activity.uiColor(R.color.launcher_action_surface),
+                    if (focused) activity.uiColor(R.color.launcher_focus_row) else activity.uiColor(R.color.launcher_action_surface),
                     activity.uiDimen(R.dimen.radius_action),
-                    if (focused) activity.uiColor(R.color.launcher_glass_focus_edge) else null,
-                    if (focused) activity.uiDimen(R.dimen.space_1) else null,
+                    if (focused) activity.uiColor(R.color.launcher_accent) else null,
+                    if (focused) activity.uiDimen(R.dimen.space_2) else null,
                 )
             }
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -192,7 +216,21 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         zoom.addView(zoomSlider, LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.action_target))).apply {
             topMargin = activity.dp(activity.uiDimen(R.dimen.space_8))
         })
-        controls.addView(zoom, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_8)) })
+        zoom.addView(activity.launcherLabel("←  Reducir     ·     Ampliar  →", R.style.LauncherTextCaption).apply {
+            setTextColor(activity.uiColor(R.color.launcher_text_secondary))
+            gravity = Gravity.CENTER
+        }, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_8)) })
+        presentation.addView(zoom, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_8)) })
+        modes[2].nextFocusDownId = modes[0].id
+        modes[0].nextFocusUpId = modes[2].id
+        modes[0].nextFocusDownId = modes[1].id
+        modes[1].nextFocusUpId = modes[0].id
+        modes[2].nextFocusRightId = modes[3].id
+        modes[0].nextFocusRightId = zoomSlider.id
+        modes[1].nextFocusRightId = zoomSlider.id
+        modes[3].nextFocusLeftId = modes[2].id
+        modes[3].nextFocusDownId = zoomSlider.id
+        zoomSlider.nextFocusUpId = modes[3].id
         body.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         overviewBody = body
         contentContainer = FrameLayout(activity)
@@ -211,7 +249,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
     fun focusInitialItem() {
         post {
             if (editingCorners) cornerEditor?.requestFocus()
-            else modes.firstOrNull()?.requestFocus()
+            else modes.getOrNull(2)?.requestFocus()
         }
     }
 
@@ -252,6 +290,17 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
     }
 
     fun handleBack(): Boolean {
+        if (editingOrientation) {
+            if (busy) return true
+            editingOrientation = false
+            orientationPane?.visibility = View.GONE
+            overviewBody.visibility = View.VISIBLE
+            headerTitle.text = "Imagen"
+            headerSubtitle.text = "Ajusta la forma, la orientación y el tamaño"
+            footer.text = "El zoom conserva la forma definida por las cuatro esquinas."
+            modes[3].requestFocus()
+            return true
+        }
         if (!editingCorners) return false
         endCornerSession(CornerSessionEndAction.ROLLBACK)
         return true
@@ -412,26 +461,77 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         }
     }
 
+    private fun orientationLabel(mode: ProjectorProjectionMode): String = when (mode) {
+        ProjectorProjectionMode.FRONT -> "Frontal"
+        ProjectorProjectionMode.REAR -> "Trasera · espejo"
+        ProjectorProjectionMode.CEILING -> "Techo · frontal"
+        ProjectorProjectionMode.REAR_CEILING -> "Techo · trasera"
+    }
+
+    private fun orientationDescription(mode: ProjectorProjectionMode): String = when (mode) {
+        ProjectorProjectionMode.FRONT -> "Proyector sobre una mesa, delante de la pantalla"
+        ProjectorProjectionMode.REAR -> "Proyector sobre una mesa, detrás de la pantalla"
+        ProjectorProjectionMode.CEILING -> "Proyector invertido, delante de la pantalla"
+        ProjectorProjectionMode.REAR_CEILING -> "Proyector invertido, detrás de la pantalla"
+    }
+
     private fun openProjectionOrientation() {
         if (busy) return
+        editingOrientation = true
+        overviewBody.visibility = View.GONE
+        headerTitle.text = "Modo de proyección"
+        headerSubtitle.text = "Elige según la posición del proyector"
+        val pane = orientationPane ?: LinearLayout(activity).apply {
+            orientation = VERTICAL
+            ProjectorProjectionMode.entries.forEachIndexed { index, mode ->
+                val row = ModeRow(activity, R.drawable.ic_monitor_play,
+                    orientationLabel(mode), orientationDescription(mode)) {
+                    updateOrientation(mode)
+                }
+                orientationRows[mode] = row
+                addView(row, LayoutParams(-1, activity.dp(activity.uiDimen(R.dimen.space_64))).apply {
+                    if (index > 0) topMargin = activity.dp(activity.uiDimen(R.dimen.space_8))
+                })
+            }
+        }.also {
+            orientationPane = it
+            contentContainer.addView(it, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        }
+        pane.visibility = View.VISIBLE
+        orientationRows.values.firstOrNull()?.requestFocus()
+        updateOrientation(null)
+    }
+
+    private fun updateOrientation(requested: ProjectorProjectionMode?) {
+        if (busy) return
         busy = true
-        status.text = "Abriendo orientación…"
+        status.text = if (requested == null) "Leyendo orientación…" else "Aplicando…"
+        footer.text = "Espera a que el proyector confirme el modo."
         worker.execute {
+            var actual: ProjectorProjectionMode? = null
+            var failure: String? = null
             try {
-                repository.openProjectionOrientation(::showApprovalPrompt)
-                main.post {
-                    busy = false
-                    status.text = "Orientación abierta"
-                    footer.text = "Selector del HY300 Pro: frontal, trasera espejada, techo o techo trasera."
-                }
+                actual = if (requested == null) repository.readOrientation(::showApprovalPrompt)
+                    else repository.setOrientation(requested, ::showApprovalPrompt)
             } catch (error: Exception) {
-                main.post {
-                    busy = false
-                    status.text = "No disponible"
-                    val detail = error.message ?: "No se pudo abrir la orientación del proyector."
-                    footer.text = detail
-                    Toast.makeText(activity, detail, Toast.LENGTH_LONG).show()
+                failure = error.message ?: "No se pudo confirmar la orientación."
+                // A partial failure must not leave the previous mode marked as current.
+                actual = runCatching { repository.readOrientation(::showApprovalPrompt) }.getOrNull()
+            }
+            main.post {
+                if (closing) return@post
+                busy = false
+                orientationMode = actual
+                orientationRows.forEach { (mode, row) ->
+                    row.setModeSelected(mode == actual)
+                    row.setSubtitle((if (mode == actual) "Actual · " else "") + orientationDescription(mode))
                 }
+                modes[3].setSubtitle(actual?.let { orientationLabel(it) + " · ajuste directo" }
+                    ?: "Orientación no disponible")
+                status.text = if (failure == null) "Conectado" else "No confirmado"
+                footer.text = failure ?: "El modo se aplica al seleccionarlo. Atrás vuelve a Imagen."
+                if (requested == null && actual != null) orientationRows[actual]?.requestFocus()
+                if (failure != null) Toast.makeText(activity, failure, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -557,7 +657,7 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         setPadding(activity.dp(activity.uiDimen(R.dimen.space_48)), activity.dp(activity.uiDimen(R.dimen.space_27)), activity.dp(activity.uiDimen(R.dimen.space_48)), activity.dp(activity.uiDimen(R.dimen.space_27)))
         contentContainer.layoutParams = (contentContainer.layoutParams as LayoutParams).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_14)) }
         headerTitle.text = "Imagen"
-        headerSubtitle.text = "Zoom y corrección de geometría"
+        headerSubtitle.text = "Ajusta la forma, la orientación y el tamaño"
         footer.text = message
         modes.getOrNull(2)?.requestFocus()
     }
@@ -683,8 +783,12 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
                     zoomSlider.progress = updated.zoom
                     zoomSlider.isEnabled = updated.supportsZoom
                     modes.getOrNull(0)?.setModeSelected(updated.autoKeystone)
-                    modes.getOrNull(0)?.setSubtitle(if (updated.supportsAutoKeystone) "Ajuste automático por firmware" else "No disponible en este firmware")
-                    manualRow.setSubtitle(if (updated.supportsManualKeystone) "Corrección vertical con control del firmware" else "No disponible en este firmware")
+                    modes.getOrNull(0)?.setSubtitle(when {
+                        !updated.supportsAutoKeystone -> "No disponible en este firmware"
+                        updated.autoKeystone -> "Activada · pulsa para desactivar"
+                        else -> "Desactivada · pulsa para activar"
+                    })
+                    manualRow.setSubtitle(if (updated.supportsManualKeystone) "Ajuste vertical de la imagen" else "No disponible en este firmware")
                     footer.text = when {
                         editingCorners -> "${cornerLabel(ProjectorImageState.CORNER_ORDER[selectedCorner])}: usa los controles para moverla."
                         !updated.supportsFourCorner -> "El firmware no ofrece ajuste de cuatro esquinas."
@@ -803,14 +907,15 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
     private class ModeRow(
         private val activity: Activity,
         icon: Int,
-        title: String,
+        private val title: String,
         description: String,
         onSelect: () -> Unit,
     ) : LinearLayout(activity) {
         private var selected = false
         private val subtitle = activity.launcherLabel(description, R.style.LauncherTextCaption).apply {
             setTextColor(activity.uiColor(R.color.launcher_text_secondary))
-            maxLines = 1
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
 
         init {
@@ -834,14 +939,15 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
             setOnClickListener { onSelect() }
             setOnFocusChangeListener { view, focused ->
                 view.animate().cancel()
-                view.animate().scaleX(if (focused) 1.02f else 1f).scaleY(if (focused) 1.02f else 1f)
-                    .setDuration(activity.resources.getInteger(R.integer.motion_row_focus).toLong()).start()
                 updateBackground(focused)
             }
             updateBackground(false)
         }
 
-        fun setSubtitle(value: String) { subtitle.text = value }
+        fun setSubtitle(value: String) {
+            subtitle.text = value
+            contentDescription = "$title. $value"
+        }
 
         fun setModeSelected(value: Boolean) {
             selected = value
@@ -851,13 +957,13 @@ class ImageCorrectionOverlay(private val activity: Activity) : LinearLayout(acti
         private fun updateBackground(focused: Boolean) {
             background = activity.rounded(
                 when {
-                    focused -> activity.uiColor(R.color.launcher_glass_focus_panel)
+                    focused -> activity.uiColor(R.color.launcher_focus_row)
                     selected -> activity.uiColor(R.color.launcher_action_surface)
                     else -> activity.uiColor(R.color.launcher_surface)
                 },
                 activity.uiDimen(R.dimen.radius_action),
-                if (focused) activity.uiColor(R.color.launcher_glass_focus_edge) else null,
-                if (focused) activity.uiDimen(R.dimen.space_1) else null,
+                if (focused) activity.uiColor(R.color.launcher_accent) else null,
+                if (focused) activity.uiDimen(R.dimen.space_2) else null,
             )
         }
     }
