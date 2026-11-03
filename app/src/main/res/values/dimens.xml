@@ -11,7 +11,7 @@
     <dimen name="space_40">40dp</dimen><dimen name="space_44">44dp</dimen><dimen name="space_46">46dp</dimen>
     <dimen name="space_48">48dp</dimen><dimen name="space_52">52dp</dimen><dimen name="space_54">54dp</dimen><dimen name="space_58">58dp</dimen>
     <dimen name="space_60">60dp</dimen><dimen name="space_64">64dp</dimen><dimen name="space_84">84dp</dimen>
-    <dimen name="space_100">100dp</dimen><dimen name="space_136">136dp</dimen><dimen name="space_142">142dp</dimen>
+    <dimen name="space_100">100dp</dimen><dimen name="space_136">136dp</dimen><dimen name="space_142">142dp</dimen><dimen name="space_200">200dp</dimen>
     <dimen name="space_252">252dp</dimen><dimen name="space_260">260dp</dimen>
     <dimen name="safe_inset_horizontal">32dp</dimen><dimen name="safe_inset_vertical">24dp</dimen>
     <dimen name="catalog_horizontal_inset">60dp</dimen><dimen name="catalog_min_width">430dp</dimen>

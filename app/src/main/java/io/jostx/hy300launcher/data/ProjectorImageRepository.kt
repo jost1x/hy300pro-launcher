@@ -41,6 +41,10 @@ class ProjectorImageRepository(context: Context) : Closeable {
     private var adb: Adb? = null
     private var cachedState: ProjectorImageState? = null
 
+    /** Returns the neutral virtual corner map for the current firmware zoom level. */
+    fun neutralCornersForZoom(zoom: Int): Map<ProjectorCorner, ProjectorPoint> =
+        neutralCorners(zoomInset(zoom))
+
     @Synchronized
     fun readState(waitingForApproval: () -> Unit): ProjectorImageState {
         val connection = rootConnection(waitingForApproval)
@@ -60,14 +64,22 @@ class ProjectorImageRepository(context: Context) : Closeable {
             ?.substringAfter('=') == "yes"
         fun int(name: String, default: Int = 0) = values[name]?.toIntOrNull() ?: default
         fun bool(name: String) = values[name] == "1" || values[name].equals("true", ignoreCase = true)
-        val corners = mapOf(
+        val zoom = (20 - int("persist.sys.zoom_value", 20)).coerceIn(0, 20)
+        val persistedCorners = mapOf(
             ProjectorCorner.TOP_LEFT to ProjectorPoint(int("persist.display.keystone_ltx"), int("persist.display.keystone_lty")),
             ProjectorCorner.TOP_RIGHT to ProjectorPoint(int("persist.display.keystone_rtx"), int("persist.display.keystone_rty")),
             ProjectorCorner.BOTTOM_RIGHT to ProjectorPoint(int("persist.display.keystone_rbx"), int("persist.display.keystone_rby")),
             ProjectorCorner.BOTTOM_LEFT to ProjectorPoint(int("persist.display.keystone_lbx"), int("persist.display.keystone_lby")),
         )
+        // Older zoom writes changed SurfaceFlinger without updating the corner properties.
+        // If all persisted corners are untouched at zero, materialize the current neutral zoom shape.
+        val corners = if (zoom < 20 && persistedCorners.values.all { it.x == 0 && it.y == 0 }) {
+            neutralCorners(zoomInset(zoom))
+        } else {
+            persistedCorners
+        }
         return ProjectorImageState(
-            zoom = (20 - int("persist.sys.zoom_value", 20)).coerceIn(0, 20),
+            zoom = zoom,
             autoKeystone = bool("persist.sys.tpryauto"),
             manualKeystoneEnabled = bool("persist.sys.prj.keystone"),
             manualKeystoneValue = int("persist.sys.prj.manualkeystone").coerceIn(0, 90),
@@ -83,15 +95,19 @@ class ProjectorImageRepository(context: Context) : Closeable {
     fun setZoom(value: Int, waitingForApproval: () -> Unit): ProjectorImageState {
         val zoom = value.coerceIn(0, 20)
         val connection = rootConnection(waitingForApproval)
-        val inset = ((20 - zoom) * (1000.0 / 120.0)).roundToInt()
+        val current = cachedState ?: readState(waitingForApproval)
+        val corners = scaleCorners(current.corners, current.zoom, zoom)
+        val matrix = matrixForCorners(corners)
         val overscan = 80 + zoom
-        val matrix = List(8) { inset }
-        connection.shell(
+        val properties = cornerProperties(corners).joinToString("; ") { (name, number) -> "setprop $name $number" }
+        val result = connection.shell(
             "setprop persist.sys.zoom_value ${20 - zoom}; " +
-                "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'; " +
-                "setprop persist.vendor.overscan.main 'overscan $overscan,$overscan,$overscan,$overscan'",
+                "setprop persist.vendor.overscan.main 'overscan $overscan,$overscan,$overscan,$overscan'; " +
+                "$properties; " +
+                "${surfaceMatrixCommand(matrix)}; " +
+                "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'",
         )
-        applySurfaceMatrix(connection, matrix)
+        verifySurfaceMatrixResult(result)
         val state = readState(waitingForApproval)
         if (state.zoom != zoom) throw IOException("El firmware no confirmó el valor de zoom")
         return state
@@ -103,26 +119,53 @@ class ProjectorImageRepository(context: Context) : Closeable {
         deltaX: Int,
         deltaY: Int,
         waitingForApproval: () -> Unit,
+    ): ProjectorImageState = adjustCorners(mapOf(corner to (deltaX to deltaY)), waitingForApproval)
+
+    @Synchronized
+    fun adjustCorners(
+        deltas: Map<ProjectorCorner, Pair<Int, Int>>,
+        waitingForApproval: () -> Unit,
     ): ProjectorImageState {
         val connection = rootConnection(waitingForApproval)
         val state = cachedState ?: readState(waitingForApproval)
-        val current = state.corners.getValue(corner)
-        val updated = current.copy(
-            x = (current.x + deltaX).coerceIn(0, 500),
-            y = (current.y + deltaY).coerceIn(0, 500),
-        )
-        val properties = when (corner) {
-            ProjectorCorner.TOP_LEFT -> listOf("persist.display.keystone_ltx" to updated.x, "persist.display.keystone_lty" to updated.y)
-            ProjectorCorner.TOP_RIGHT -> listOf("persist.display.keystone_rtx" to updated.x, "persist.display.keystone_rty" to updated.y)
-            ProjectorCorner.BOTTOM_RIGHT -> listOf("persist.display.keystone_rbx" to updated.x, "persist.display.keystone_rby" to updated.y)
-            ProjectorCorner.BOTTOM_LEFT -> listOf("persist.display.keystone_lbx" to updated.x, "persist.display.keystone_lby" to updated.y)
+        val next = state.corners.toMutableMap()
+        deltas.forEach { (corner, delta) ->
+            val current = next.getValue(corner)
+            next[corner] = current.copy(
+                x = (current.x + delta.first).coerceIn(0, 500),
+                y = (current.y + delta.second).coerceIn(0, 500),
+            )
         }
-        val next = state.corners + (corner to updated)
-        val command = properties.joinToString("; ") { (name, number) -> "setprop $name $number" } +
-            "; " + surfaceMatrixCommand(matrixForCorners(next))
+        val matrix = matrixForCorners(next)
+        val properties = cornerProperties(next).joinToString("; ") { (name, number) -> "setprop $name $number" }
+        val command = "$properties; ${surfaceMatrixCommand(matrix)}; " +
+            "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'"
         val result = connection.shell(command)
         verifySurfaceMatrixResult(result)
-        return state.copy(corners = next).also { cachedState = it }
+        val verified = readState(waitingForApproval)
+        if (verified.corners != next) throw IOException("El firmware no confirmó el movimiento de la esquina")
+        return verified.also { cachedState = it }
+    }
+
+    @Synchronized
+    fun setCorners(
+        corners: Map<ProjectorCorner, ProjectorPoint>,
+        waitingForApproval: () -> Unit,
+    ): ProjectorImageState {
+        require(ProjectorCorner.entries.all { corner ->
+            corners[corner]?.let { it.x in 0..500 && it.y in 0..500 } == true
+        }) { "El ajuste calculado está fuera del rango permitido." }
+        val connection = rootConnection(waitingForApproval)
+        val matrix = matrixForCorners(corners)
+        val properties = cornerProperties(corners).joinToString("; ") { (name, number) -> "setprop $name $number" }
+        val result = connection.shell(
+            "$properties; ${surfaceMatrixCommand(matrix)}; " +
+                "setprop persist.sys.zoom.value '${matrix.joinToString(",")}'",
+        )
+        verifySurfaceMatrixResult(result)
+        val verified = readState(waitingForApproval)
+        if (verified.corners != corners) throw IOException("El firmware no confirmó las cuatro esquinas")
+        return verified.also { cachedState = it }
     }
 
     @Synchronized
@@ -185,11 +228,6 @@ class ProjectorImageRepository(context: Context) : Closeable {
         return connected
     }
 
-    private fun applySurfaceMatrix(connection: Adb, matrix: List<Int>) {
-        val result = connection.shell(surfaceMatrixCommand(matrix))
-        verifySurfaceMatrixResult(result)
-    }
-
     private fun surfaceMatrixCommand(matrix: List<Int>): String {
         require(matrix.size == 8)
         val args = matrix.joinToString(" ") { "f ${it / 1000.0}" }
@@ -201,6 +239,47 @@ class ProjectorImageRepository(context: Context) : Closeable {
             throw IOException("SurfaceFlinger rechazó la corrección de imagen")
         }
     }
+
+    /** Apply the zoom as a uniform scale around the display center to the current four-corner shape. */
+    private fun scaleCorners(
+        corners: Map<ProjectorCorner, ProjectorPoint>,
+        fromZoom: Int,
+        toZoom: Int,
+    ): Map<ProjectorCorner, ProjectorPoint> {
+        val oldScale = zoomScale(fromZoom)
+        val newScale = zoomScale(toZoom)
+        val scale = newScale / oldScale
+        fun mapPoint(corner: ProjectorCorner, point: ProjectorPoint): ProjectorPoint {
+            val rightSide = corner == ProjectorCorner.TOP_RIGHT || corner == ProjectorCorner.BOTTOM_RIGHT
+            val bottomSide = corner == ProjectorCorner.BOTTOM_RIGHT || corner == ProjectorCorner.BOTTOM_LEFT
+            val x = if (rightSide) 1000 - point.x else point.x
+            val y = if (bottomSide) 1000 - point.y else point.y
+            val scaledX = (500 + (x - 500) * scale).roundToInt().coerceIn(0, 1000)
+            val scaledY = (500 + (y - 500) * scale).roundToInt().coerceIn(0, 1000)
+            return ProjectorPoint(
+                x = (if (rightSide) 1000 - scaledX else scaledX).coerceIn(0, 500),
+                y = (if (bottomSide) 1000 - scaledY else scaledY).coerceIn(0, 500),
+            )
+        }
+        return corners.mapValues { (corner, point) -> mapPoint(corner, point) }
+    }
+
+    private fun zoomInset(zoom: Int) = ((20 - zoom.coerceIn(0, 20)) * (1000.0 / 120.0)).roundToInt()
+
+    private fun zoomScale(zoom: Int) = 1.0 - (2.0 * zoomInset(zoom) / 1000.0)
+
+    private fun neutralCorners(inset: Int) = ProjectorCorner.entries.associateWith { ProjectorPoint(inset, inset) }
+
+    private fun cornerProperties(corners: Map<ProjectorCorner, ProjectorPoint>) = listOf(
+        "persist.display.keystone_ltx" to corners.getValue(ProjectorCorner.TOP_LEFT).x,
+        "persist.display.keystone_lty" to corners.getValue(ProjectorCorner.TOP_LEFT).y,
+        "persist.display.keystone_rtx" to corners.getValue(ProjectorCorner.TOP_RIGHT).x,
+        "persist.display.keystone_rty" to corners.getValue(ProjectorCorner.TOP_RIGHT).y,
+        "persist.display.keystone_rbx" to corners.getValue(ProjectorCorner.BOTTOM_RIGHT).x,
+        "persist.display.keystone_rby" to corners.getValue(ProjectorCorner.BOTTOM_RIGHT).y,
+        "persist.display.keystone_lbx" to corners.getValue(ProjectorCorner.BOTTOM_LEFT).x,
+        "persist.display.keystone_lby" to corners.getValue(ProjectorCorner.BOTTOM_LEFT).y,
+    )
 
     private fun matrixForCorners(corners: Map<ProjectorCorner, ProjectorPoint>): List<Int> {
         fun point(corner: ProjectorCorner) = corners.getValue(corner)

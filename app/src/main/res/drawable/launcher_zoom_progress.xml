@@ -1,0 +1,24 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@android:id/background"
+        android:height="@dimen/space_4"
+        android:gravity="center_vertical">
+        <shape android:shape="rectangle">
+            <size android:height="@dimen/space_4" />
+            <corners android:radius="@dimen/space_2" />
+            <solid android:color="@color/launcher_glass_edge" />
+        </shape>
+    </item>
+    <item
+        android:id="@android:id/progress"
+        android:height="@dimen/space_4"
+        android:gravity="center_vertical">
+        <clip>
+            <shape android:shape="rectangle">
+                <size android:height="@dimen/space_4" />
+                <corners android:radius="@dimen/space_2" />
+                <solid android:color="@color/launcher_text_primary" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>
