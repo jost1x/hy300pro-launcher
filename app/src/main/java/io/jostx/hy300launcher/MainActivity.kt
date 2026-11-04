@@ -21,7 +21,7 @@ import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
-import io.jostx.hy300launcher.data.Adb
+import io.jostx.hy300launcher.data.ImageControlClient
 import io.jostx.hy300launcher.data.FavoritesStore
 import io.jostx.hy300launcher.data.InstalledAppsRepository
 import io.jostx.hy300launcher.model.TvApp
@@ -32,7 +32,6 @@ import io.jostx.hy300launcher.ui.dp
 import io.jostx.hy300launcher.ui.glassRounded
 import io.jostx.hy300launcher.ui.uiColor
 import io.jostx.hy300launcher.ui.uiDimen
-import java.io.IOException
 import java.util.concurrent.Executors
 
 /** Android lifecycle and launcher actions; view composition lives in UI components. */
@@ -320,51 +319,19 @@ class MainActivity : Activity() {
         powerRequestPending = true
         powerExecutor.execute {
             try {
-                Adb.connect(applicationContext, POWER_AUTH_TIMEOUT_MS) {
-                    runOnUiThread {
-                        Toast.makeText(
-                            this,
-                            "Acepta en el proyector «Permitir depuración USB» y marca «Permitir siempre».",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                    }
-                }.use { adb ->
-                    val result = adb.shell(OPEN_SHUTDOWN_CONFIRMATION)
-                    if (!result.contains("Starting: Intent") ||
-                        result.contains("Error:") ||
-                        result.contains("Exception") ||
-                        result.contains("Permission Denial")
-                    ) {
-                        throw IOException("No se pudo abrir la confirmación del sistema")
-                    }
-                }
-            } catch (error: IOException) {
-                mainHandler.post { showPowerUnavailable(error) }
-            } catch (_: SecurityException) {
-                mainHandler.post { showPowerUnavailable(IOException("Permiso de depuración denegado")) }
+                val control = ImageControlClient(applicationContext)
+                control.checkShutdown()
+                control.requestShutdown()
+            } catch (error: Exception) {
+                mainHandler.post { showPowerUnavailable(error.message ?: "No se pudo abrir la confirmación de apagado.") }
             } finally {
                 mainHandler.post { powerRequestPending = false }
             }
         }
     }
 
-    private fun showPowerUnavailable(error: IOException) {
-        val message = when {
-            error.message?.contains("port 5555 closed") == true ->
-                "Activa la depuración USB en el proyector y vuelve a intentarlo."
-            error.message?.contains("wasn't accepted") == true || error.message?.contains("rejected") == true ->
-                "Acepta la solicitud «Permitir depuración USB» en el proyector y vuelve a intentarlo."
-            else -> "No se pudo abrir la confirmación de apagado. ${error.message.orEmpty()}"
-        }
+    private fun showPowerUnavailable(message: String) {
         showLauncherDialog("No se pudo abrir el apagado", message, "Entendido")
-    }
-
-    private companion object {
-        const val POWER_AUTH_TIMEOUT_MS = 120_000
-        const val OPEN_SHUTDOWN_CONFIRMATION =
-            "am start -a com.android.internal.intent.action.REQUEST_SHUTDOWN" +
-                " -n android/com.android.internal.app.ShutdownActivity" +
-                " --ez android.intent.extra.KEY_CONFIRM true"
     }
 
     private fun applyTvWindowFlags() {

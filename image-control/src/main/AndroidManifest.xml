@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.HARDWARE_TEST" />
+    <uses-permission android:name="android.permission.SHUTDOWN" />
     <queries><package android:name="io.jostx.hy300launcher" /></queries>
     <application android:label="Control de imagen HY300 Pro" android:allowBackup="false">
         <!-- Each Binder call authenticates the launcher's package AND signing certificate. -->

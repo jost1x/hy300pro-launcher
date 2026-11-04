@@ -4,11 +4,11 @@
 
 El launcher controla la orientación directamente mediante el HAL del firmware. Zoom y cuatro esquinas usan un servicio propio, `io.jostx.hy300launcher.imagecontrol`, instalado como un segundo APK sin icono de inicio. Los ajustes de imagen ya no abren conexiones ADB ni ejecutan comandos de shell o clases del APK OEM. No se invoca Magisk ni se modifican las particiones del sistema.
 
-El botón de apagado del launcher todavía utiliza ADB. La corrección automática mantiene las señales y broadcasts del firmware; su efecto óptico no se volvió a verificar en esta integración. Trapecio manual sigue figurando como no disponible porque el HY300 Pro examinado no expone su nodo.
+El apagado también pasa por el servicio firmado: este comprueba `android.permission.SHUTDOWN` y abre la confirmación del sistema. Android 11 protege `ShutdownActivity` con ese permiso y lo concede por firma de plataforma. La pantalla pide confirmar antes de apagar. En el HY300 Pro se comprobó `SHUTDOWN: granted=true`, se abrió el diálogo y se canceló de forma segura. La implementación y su prueba actual dependen de este permiso y componente OEM de Android 11; véase el [manifiesto AOSP de Android 11](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android11-release/core/res/AndroidManifest.xml) y [su actividad de apagado](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android11-release/core/java/com/android/internal/app/ShutdownActivity.java). La corrección automática mantiene las señales y broadcasts del firmware; su efecto óptico no se volvió a verificar en esta integración. Trapecio manual sigue figurando como no disponible porque el HY300 Pro examinado no expone su nodo.
 
 ## Instalación y firma
 
-Son dos APK: se conserva la firma del launcher para actualizarlo sin borrar datos. El servicio pide únicamente `android.permission.HARDWARE_TEST`. En este firmware, ese permiso autoriza la transacción 1050 de SurfaceFlinger; su certificado de plataforma coincide con el certificado público de pruebas AOSP documentado en [el análisis del permiso](surfaceflinger-permission-analysis.md).
+Son dos APK: se conserva la firma del launcher para actualizarlo sin borrar datos. El servicio pide `android.permission.HARDWARE_TEST` y `android.permission.SHUTDOWN` para la confirmación de apagado. En este firmware, `HARDWARE_TEST` autoriza la transacción 1050 de SurfaceFlinger y `SHUTDOWN` autoriza abrir la pantalla del sistema. El certificado de plataforma coincide con el certificado público de pruebas AOSP documentado en [el análisis del permiso](surfaceflinger-permission-analysis.md).
 
 ```bash
 export ANDROID_HOME="$HOME/Android/Sdk"
@@ -28,7 +28,7 @@ ADB se usa aquí para instalar y recoger evidencia; no forma parte de las llamad
 ## Contrato y recuperación
 
 - Binder explícito mediante AIDL compartido, sin dependencias nuevas.
-- Dos operaciones: comprobar disponibilidad y aplicar una matriz de ocho enteros con zoom opcional. No acepta comandos ni nombres de propiedades.
+- Operaciones de control: comprobar disponibilidad, aplicar una matriz de ocho enteros con zoom opcional y abrir la confirmación de apagado. No acepta comandos ni nombres de propiedades.
 - Coordenadas interiores entre 0 y 500; orden inferior izquierda, superior izquierda, superior derecha, inferior derecha; cada coordenada se divide por 1000 al enviarla a SurfaceFlinger. Zoom entre 0 y 20, o −1 para conservarlo.
 - Se valida el UID, paquete y certificado en cada llamada, antes de limpiar la identidad Binder y tocar el firmware.
 - Escrituras serializadas. Antes de modificar se guarda un registro atómico con los valores originales y la matriz de recuperación. Ante un error se intenta restaurar; si el proceso termina durante la operación, la siguiente llamada autenticada recupera el registro pendiente antes de aceptar otra escritura.
@@ -41,7 +41,7 @@ La retícula conserva el patrón fijo 16:9 de 9 × 5 celdas, de proporción 80:8
 
 Compilación: `:app:assembleDebug` y `:image-control:assembleRelease` completadas, incluida la comprobación vital de lint del servicio. Instalación: ambos APK instalados como actualización/servicio adicional, sin borrar datos ni cambiar el inicio predeterminado.
 
-El diagnóstico privado de debug `ImageBackendDiagnosticActivity` ejecutó el mismo repositorio que utiliza la interfaz, con UID del launcher **10074**. El servicio obtuvo UID **10066**, sin UID de sistema, y `HARDWARE_TEST: granted=true`.
+El diagnóstico privado de debug `ImageBackendDiagnosticActivity` ejecutó el mismo repositorio que utiliza la interfaz, con UID del launcher **10074**. El servicio obtuvo UID **10066**, sin UID de sistema, y `HARDWARE_TEST: granted=true`, `SHUTDOWN: granted=true`.
 
 Resultado de la prueba reversible:
 
@@ -63,6 +63,7 @@ Comprobaciones adicionales:
 - Sin el servicio instalado: capacidades de geometría y zoom desactivadas y mensaje «Falta instalar el servicio Control de imagen HY300 Pro».
 - Desde la interfaz y con eventos del mando: superior izquierda X 100 → 105; Atrás restauró X 100. Se repitió usando el botón Cancelar con el mismo resultado.
 - Después de detener el servicio y arrancar nuevamente el launcher: conexión y lectura correctas; coordenadas inválidas rechazadas.
+- Desde el botón **Apagar**, el servicio abrió la pantalla real del sistema: «Tu dispositivo se apagará», con **CANCELAR** y **ACEPTAR**. Se eligió **CANCELAR**; el proyector siguió encendido y `sys.powerctl` quedó vacío.
 - Comparación externa de las 15 propiedades de geometría, orientación y corrección automática: idénticas al inicio después de los diagnósticos y de la prueba de interfaz. Sin registro de recuperación pendiente.
 
-Límites: se confirmó aceptación del firmware y lectura de propiedades/HAL, no la proporción óptica sobre la pared. No se apagó el daemon ADB ni se reinició el proyector. La recuperación por muerte durante una escritura y el rechazo de una app con otro certificado están implementados e inspeccionados, pero no se provocaron en esta sesión. El diagnóstico de debug no forma parte de la versión release ni tiene componentes exportados.
+Límites: el diálogo de apagado se comprobó y se canceló en el HY300 Pro; no se confirmó un apagado real. La calibración óptica de la proporción sobre la pared sigue pendiente. La recuperación por muerte durante una escritura y el rechazo de una app con otro certificado están implementados e inspeccionados, pero no se provocaron en esta sesión. El diagnóstico de debug no forma parte de la versión release ni tiene componentes exportados.

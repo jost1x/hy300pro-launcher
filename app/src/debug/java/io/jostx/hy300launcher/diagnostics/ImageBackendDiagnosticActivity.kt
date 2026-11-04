@@ -33,6 +33,9 @@ class ImageBackendDiagnosticActivity : Activity() {
                 check(state.supportsFourCorner && state.supportsZoom)
                 val orientation = repository.readOrientation {}
                 line("orientation=$orientation")
+                val shutdown = runCatching { ImageControlClient(applicationContext).checkShutdown(); "ready" }
+                    .getOrElse { "unavailable: ${it.message}" }
+                line("shutdownPermission=$shutdown")
                 try {
                     ImageControlClient(applicationContext).apply(List(8) { 501 })
                     error("Invalid geometry was accepted")

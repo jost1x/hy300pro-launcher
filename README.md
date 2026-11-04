@@ -20,17 +20,11 @@ Requiere JDK 17 y Android SDK Platform 35.
 ./gradlew :app:assembleDebug
 ```
 
-El APK de depuración queda en `app/build/outputs/apk/debug/app-debug.apk`. Para probar en un dispositivo conectado por ADB:
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Después selecciona **HY300 Launcher** como aplicación de inicio en Android. El comportamiento del firmware debe confirmarse en el proyector real.
+El APK de depuración queda en `app/build/outputs/apk/debug/app-debug.apk`. Puedes instalarlo con Android Studio o `adb install -r app/build/outputs/apk/debug/app-debug.apk`. La instalación y la selección inicial del launcher requieren acceso administrativo al dispositivo; las funciones del launcher ya no invocan ADB en tiempo de uso.
 
 ## Servicio de imagen
 
-Zoom y cuatro esquinas requieren el APK complementario **Control de imagen HY300 Pro**, firmado para el firmware verificado. La orientación se controla directamente. El launcher conserva su firma y datos; no utiliza la aplicación OEM para estas operaciones. El botón de apagado todavía usa ADB.
+Zoom y cuatro esquinas requieren el APK complementario **Control de imagen HY300 Pro**, firmado para el firmware verificado. La orientación se controla directamente. El launcher conserva su firma y datos; no utiliza la aplicación OEM para estas operaciones. El botón de apagado también abre la confirmación del sistema mediante el servicio firmado; ya no requiere ADB durante el uso. La confirmación se verificó en el HY300 Pro y se canceló para mantenerlo encendido.
 
 Consulta [instalación, firma y verificación en el proyector](docs/integrated-image-control.md).
 

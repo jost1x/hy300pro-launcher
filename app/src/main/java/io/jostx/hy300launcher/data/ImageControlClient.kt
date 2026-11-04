@@ -18,6 +18,8 @@ import java.util.concurrent.atomic.AtomicReference
 /** Explicit, bounded Binder connection. Never falls back to ADB or replays an uncertain write. */
 internal class ImageControlClient(private val context: Context) {
     fun check() = call { it.status() }
+    fun checkShutdown() = call { it.shutdownStatus() }
+    fun requestShutdown() = call { it.requestShutdown() }
     fun apply(matrix: List<Int>, zoom: Int = -1) = call { it.applyGeometry(matrix.toIntArray(), zoom) }
 
     private fun call(operation: (IImageControl) -> String?) {

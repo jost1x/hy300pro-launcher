@@ -39,6 +39,28 @@ public final class ImageControlService extends Service {
             } catch (Exception error) { return detail(error); }
             finally { Binder.restoreCallingIdentity(identity); }
         }
+        @Override public String shutdownStatus() {
+            authenticate();
+            if (checkSelfPermission("android.permission.SHUTDOWN") != PackageManager.PERMISSION_GRANTED)
+                return "El servicio no tiene permiso para abrir el apagado del sistema";
+            return "";
+        }
+        @Override public String requestShutdown() {
+            authenticate();
+            if (checkSelfPermission("android.permission.SHUTDOWN") != PackageManager.PERMISSION_GRANTED)
+                return "El servicio no tiene permiso para abrir el apagado del sistema";
+            long identity = Binder.clearCallingIdentity();
+            try {
+                Intent shutdown = new Intent("com.android.internal.intent.action.REQUEST_SHUTDOWN")
+                        .setComponent(new android.content.ComponentName("android", "com.android.internal.app.ShutdownActivity"))
+                        .putExtra("android.intent.extra.KEY_CONFIRM", true)
+                        .putExtra("android.intent.extra.USER_REQUESTED_SHUTDOWN", true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(shutdown);
+                return "";
+            } catch (Exception error) { return detail(error); }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
         @Override public String applyGeometry(int[] matrix, int zoom) {
             authenticate();
             if (matrix == null || matrix.length != 8 || zoom < -1 || zoom > 20)
