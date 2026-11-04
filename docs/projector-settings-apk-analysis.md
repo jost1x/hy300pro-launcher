@@ -121,7 +121,7 @@ En la actualización de calibración visual del 2026-11-02, se instaló el APK d
 
 ### Orientación nativa sin depender de la app OEM
 
-`ProjectorOrientationBridge` es una entrada Java del propio APK, ejecutada mediante `app_process` desde el ADB local root. Usa la interfaz HIDL `vendor.aw.homlet.tvsystem.tvserver@1.0::ITvServer/default`: transacción **128** para leer y **127** para escribir, con tipo de configuración **3** (`PANEL_CONFIG_MIRROR`). La firma y el orden de los argumentos se obtuvieron del APK extraído; el servicio está presente en el HY300 Pro conectado.
+`ProjectorOrientationBridge` es actualmente un puente Kotlin dentro del APK del launcher; la implementación anterior fue una entrada Java ejecutada mediante `app_process` desde el ADB local root. Usa la interfaz HIDL `vendor.aw.homlet.tvsystem.tvserver@1.0::ITvServer/default`: transacción **128** para leer y **127** para escribir, con tipo de configuración **3** (`PANEL_CONFIG_MIRROR`). La firma y el orden de los argumentos se obtuvieron del APK extraído; el servicio está presente en el HY300 Pro conectado.
 
 El puente conserva `persist.sys.panelvalue`, comprueba el resultado de la escritura y vuelve a leer el servicio. Si la operación falla, intenta restaurar tanto la propiedad como el modo del panel, e informa si esa restauración tampoco pudo confirmarse. La interfaz solo marca «Actual» después de leer el modo real; tras un error intenta volver a consultarlo. Cuando la corrección automática está activa, se envía el broadcast de firmware `android.intent.projective_mode`, como hace el OEM. La lectura de orientación no se añade a los movimientos de cuatro esquinas, para evitar procesos adicionales durante la calibración.
 

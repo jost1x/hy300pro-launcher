@@ -39,6 +39,10 @@ La retícula conserva el patrón fijo 16:9 de 9 × 5 celdas, de proporción 80:8
 
 ## Verificación realizada en el proyector
 
+Después de migrar el puente, el servicio y las propiedades compartidas a Kotlin, el 3 de noviembre de 2026 se actualizaron ambos APK en `192.168.100.12:5555`. El certificado del launcher coincide con la huella fijada por el servicio; el servicio conserva la firma de plataforma esperada y recibió `HARDWARE_TEST` y `SHUTDOWN`.
+
+Se ejecutó `ImageBackendDiagnosticActivity` en el proyector con su prueba reversible activada. Resultado: `geometry=true`, `zoom=true`, orientación `FRONT`, geometría inválida rechazada, esquina y zoom aplicados/restaurados, orientación cambiada/restaurada y `PASS_RESTORED`. El diagnóstico comprobó que las propiedades originales y la orientación quedaron restauradas. Después se abrió de nuevo `MainActivity`, que quedó como actividad en primer plano. No se modificó la aplicación Home predeterminada ni se confirmó el efecto óptico de los movimientos mínimos.
+
 Compilación: `:app:assembleDebug` y `:image-control:assembleRelease` completadas, incluida la comprobación vital de lint del servicio. Instalación: ambos APK instalados como actualización/servicio adicional, sin borrar datos ni cambiar el inicio predeterminado.
 
 El diagnóstico privado de debug `ImageBackendDiagnosticActivity` ejecutó el mismo repositorio que utiliza la interfaz, con UID del launcher **10074**. El servicio obtuvo UID **10066**, sin UID de sistema, y `HARDWARE_TEST: granted=true`, `SHUTDOWN: granted=true`.

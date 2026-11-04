@@ -13,4 +13,5 @@ repos:
       - id: check-case-conflict
       - id: check-added-large-files
         args: [--maxkb=1024]
+        exclude: ^artifacts/projector-apks/
       - id: detect-private-key

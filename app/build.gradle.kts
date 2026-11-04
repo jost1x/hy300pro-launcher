@@ -19,7 +19,7 @@ android {
 	buildFeatures { aidl = true }
 	sourceSets.getByName("main") {
 		aidl.srcDir(rootProject.file("shared/aidl"))
-		java.srcDir(rootProject.file("shared/java"))
+		java.srcDir(rootProject.file("shared/kotlin"))
 	}
 
 	compileOptions {

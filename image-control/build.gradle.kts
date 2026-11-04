@@ -1,4 +1,7 @@
-plugins { id("com.android.application") }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
 
 val launcherCertificate = providers.gradleProperty("launcherCertificateSha256")
     .orElse("551469ad2db5f49b94e0f747c3f293b1a53018239241e162f7f2e8164746df07").get()
@@ -18,12 +21,13 @@ android {
     buildFeatures { aidl = true; buildConfig = true }
     sourceSets.getByName("main") {
         aidl.srcDir(rootProject.file("shared/aidl"))
-        java.srcDir(rootProject.file("shared/java"))
+        java.srcDir(rootProject.file("shared/kotlin"))
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    kotlinOptions { jvmTarget = "17" }
     // Private companion for this Android 11 firmware, not a Play Store application.
     lint { disable += "ExpiredTargetSdkVersion" }
 }

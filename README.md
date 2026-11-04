@@ -42,10 +42,8 @@ pre-commit run --all-files
 
 Si un hook corrige archivos, revisa los cambios y vuelve a añadirlos al commit. Las versiones de los hooks están fijadas en `.pre-commit-config.yaml`.
 
-## Kotlin y Java
+## Kotlin y AIDL
 
-La interfaz, la coordinación del launcher y el cliente del servicio están escritos en Kotlin. El puente de orientación, el servicio de geometría, el acceso compartido a propiedades y la prueba aislada están en Java.
+El launcher, el servicio de geometría, el acceso compartido a propiedades, el puente de orientación y la prueba aislada están implementados en Kotlin para mantener un solo lenguaje en el código Android del proyecto. Las llamadas al firmware siguen usando las mismas interfaces Binder, reflexión y propiedades verificadas en el HY300 Pro.
 
-Java se utilizó para trasladar las llamadas de bajo nivel verificadas en el firmware y mantener el servicio y la prueba aislada sin el plugin ni el runtime de Kotlin. El puente de orientación comenzó como un punto de entrada `app_process` y después pasó a ejecutarse directamente desde el launcher.
-
-No es un requisito del HY300 Pro: Kotlin también puede utilizar Binder, AIDL y reflexión. Mantener esas clases en Java fue una decisión de implementación y reutilización de código ya probado, no una necesidad de permisos ni una ventaja de rendimiento demostrada. Se pueden migrar a Kotlin si se prefiere uniformidad.
+Los archivos `.aidl` se mantienen en AIDL porque definen el contrato Binder que Android genera para la comunicación entre procesos; no son una segunda implementación Java escrita a mano.

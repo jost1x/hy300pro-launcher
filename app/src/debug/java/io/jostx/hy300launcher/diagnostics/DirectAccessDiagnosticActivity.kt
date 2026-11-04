@@ -45,8 +45,7 @@ class DirectAccessDiagnosticActivity : Activity() {
                 Class.forName("android.os.SystemProperties").getMethod("set", String::class.java, String::class.java).toString()
             }
             probe("panel.read") {
-                val bridge = ProjectorOrientationBridge::class.java.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-                ProjectorOrientationBridge::class.java.getDeclaredMethod("read").apply { isAccessible = true }.invoke(bridge)
+                ProjectorOrientationBridge().read()
             }
             probe("surface.lookup") {
                 val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
@@ -55,21 +54,18 @@ class DirectAccessDiagnosticActivity : Activity() {
             }
             if (writes) {
                 probe("panel.writeAndRestore") {
-                    val cls = ProjectorOrientationBridge::class.java
-                    val bridge = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-                    val read = cls.getDeclaredMethod("read").apply { isAccessible = true }
-                    val apply = cls.getDeclaredMethod("apply", Int::class.javaPrimitiveType).apply { isAccessible = true }
-                    val initial = read.invoke(bridge) as Int
+                    val bridge = ProjectorOrientationBridge()
+                    val initial = bridge.read()
                     val persisted = getProperty("persist.sys.panelvalue")
                     try {
                         val changed = initial xor 1
-                        apply.invoke(bridge, changed)
-                        check(read.invoke(bridge) == changed)
+                        bridge.apply(changed)
+                        check(bridge.read() == changed)
                         line("panel.changed=$initial->$changed uid=${Process.myUid()}")
                     } finally {
-                        apply.invoke(bridge, initial)
+                        bridge.apply(initial)
                         setProperty("persist.sys.panelvalue", persisted)
-                        check(read.invoke(bridge) == initial)
+                        check(bridge.read() == initial)
                         line("panel.restored=$initial")
                     }
                     "readback confirmed"
