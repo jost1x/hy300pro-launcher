@@ -15,3 +15,5 @@ Extraídos por ADB del proyector `192.168.100.12:5555` el 3 de noviembre de 2026
 | `VideoInputService.apk` | `com.softwinner.vis` | `/system/priv-app/VideoInputService/VideoInputService.apk` | `HdmiInputService`; `CvbsInputService` (process `com.softwinner.awtvinputservice`) | `c4e2495003abb12283bf99511b768421f1f557ac2959fdaf1bb7b559ea5d9f94` |
 
 Los cinco daemons ejecutables con `-aw` están descargados en [`services/`](services/README.md). Los servicios Binder `android.aw.IBackgroundManager`, `softwinner.gpio`, `softwinner.isomountmanager`, `softwinner.multi_ir` y `softwinner.systemmix` aparecen en `service list`; no son APK independientes y no se copiaron contenedores generales del sistema para representarlos.
+
+La evaluación funcional y las recomendaciones de adaptación están en [Evaluación de componentes Aw](../../docs/aw-components-assessment.md).
