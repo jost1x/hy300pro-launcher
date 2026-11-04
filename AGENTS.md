@@ -46,6 +46,7 @@
 ## Commits
 
 - Create commits only when the user explicitly asks for one.
+- If a task includes multiple independent changes, split them into separate commits; keep related changes together in the same commit.
 - Use Conventional Commits 1.0.0, in English:
 
   ```text
