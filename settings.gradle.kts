@@ -15,7 +15,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Hy300Launcher"
-include(":app", ":image-control")
+include(":app", ":image-control", ":volume-control")
 
 // Isolated firmware permission probe; excluded from normal launcher builds.
 if (providers.gradleProperty("imageProbe").orNull == "true") {
