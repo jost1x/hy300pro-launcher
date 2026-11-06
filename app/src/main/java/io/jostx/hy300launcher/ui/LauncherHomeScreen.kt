@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.Outline
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.ViewGroup
@@ -39,6 +40,15 @@ class LauncherHomeScreen(
     private val tooltip: FocusTooltipOverlay
     private val favoriteStrip: LinearLayout
     private val shelfTray: FrameLayout
+    private val hdmiPreview: HdmiPreviewView
+    private lateinit var hdmiActionButton: ActionIconButton
+    private var hdmiButtonHovered = false
+    private var hdmiPreviewHovered = false
+    private val dismissHdmiPreview = Runnable {
+        if (!hdmiActionButton.hasFocus() && !hdmiButtonHovered && !hdmiPreviewHovered) {
+            hideHdmiPreview()
+        }
+    }
     val allAppsButton: ActionIconButton
     val settingsButton: ActionIconButton
     private lateinit var connectivityStatusCapsule: ConnectivityStatusCapsule
@@ -79,6 +89,20 @@ class LauncherHomeScreen(
         scrollView.addView(content, ViewGroup.LayoutParams(-1, -2))
         addView(scrollView, FrameLayout.LayoutParams(-1, -1))
         tooltip = FocusTooltipOverlay(activity, this)
+        hdmiPreview = HdmiPreviewView(activity).apply {
+            visibility = View.GONE
+            elevation = activity.dp(activity.uiDimen(R.dimen.elevation_menu)).toFloat()
+            setOnClickListener { onOpenInputs() }
+            setOnHoverListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_HOVER_ENTER -> hdmiPreviewHovered = true
+                    MotionEvent.ACTION_HOVER_EXIT -> hdmiPreviewHovered = false
+                }
+                updateHdmiPreviewVisibility()
+                false
+            }
+        }
+        addView(hdmiPreview, FrameLayout.LayoutParams(activity.dp(240), activity.dp(135)))
 
         val heading = LinearLayout(activity).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -143,7 +167,20 @@ class LauncherHomeScreen(
         addActionTab(actionTabs, actionButton("Apagar", R.drawable.ic_power, activity.uiColor(R.color.launcher_power)) { onPower() })
         allAppsButton = actionButton("Todas las apps", R.drawable.ic_layout_grid) { onOpenCatalog() }
         addActionTab(actionTabs, allAppsButton)
-        addActionTab(actionTabs, actionButton("Entradas", R.drawable.ic_monitor_play) { onOpenInputs() })
+        hdmiActionButton = actionButton(
+            "HDMI 1",
+            R.drawable.ic_monitor_play,
+            onFocusChanged = { updateHdmiPreviewVisibility() },
+        ) { onOpenInputs() }
+        hdmiActionButton.setOnHoverListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_HOVER_ENTER -> hdmiButtonHovered = true
+                MotionEvent.ACTION_HOVER_EXIT -> hdmiButtonHovered = false
+            }
+            updateHdmiPreviewVisibility()
+            false
+        }
+        addActionTab(actionTabs, hdmiActionButton)
         settingsButton = actionButton("Ajustes", R.drawable.ic_settings) { view -> onOpenSettingsMenu(view) }
         addActionTab(actionTabs, settingsButton)
         heading.addView(actionTabs, LinearLayout.LayoutParams(-2, -2).apply {
@@ -192,12 +229,60 @@ class LauncherHomeScreen(
         favoriteStrip.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateFades() }
         shelfTray.post(updateFades)
         content.addView(shelfTray, verticalMargin(4))
+
     }
 
     val hasContentFocus: Boolean
         get() = content.hasFocus()
 
     fun hideTooltip() = tooltip.hide()
+
+    fun syncHdmiPreview() {
+        post { updateHdmiPreviewVisibility() }
+    }
+
+    fun dismissHdmiPreview() {
+        hdmiButtonHovered = false
+        hdmiPreviewHovered = false
+        removeCallbacks(dismissHdmiPreview)
+        hideHdmiPreview()
+    }
+
+    private fun updateHdmiPreviewVisibility() {
+        removeCallbacks(dismissHdmiPreview)
+        if (hdmiActionButton.hasFocus() || hdmiButtonHovered || hdmiPreviewHovered) {
+            if (hdmiPreview.visibility != View.VISIBLE) {
+                hdmiPreview.visibility = View.VISIBLE
+                hdmiPreview.resumePreview()
+            }
+            positionHdmiPreview()
+        } else {
+            postDelayed(dismissHdmiPreview, 180L)
+        }
+    }
+
+    private fun hideHdmiPreview() {
+        hdmiPreview.pausePreview()
+        hdmiPreview.visibility = View.GONE
+    }
+
+    private fun positionHdmiPreview() {
+        hdmiPreview.post {
+            if (width <= 0 || height <= 0 || hdmiPreview.width <= 0 || hdmiPreview.height <= 0) return@post
+            val buttonPosition = IntArray(2)
+            val rootPosition = IntArray(2)
+            hdmiActionButton.getLocationInWindow(buttonPosition)
+            getLocationInWindow(rootPosition)
+            val left = (buttonPosition[0] - rootPosition[0] + hdmiActionButton.width / 2 - hdmiPreview.width / 2)
+                .coerceIn(0, (width - hdmiPreview.width).coerceAtLeast(0))
+            val below = buttonPosition[1] - rootPosition[1] + hdmiActionButton.height + activity.dp(activity.uiDimen(R.dimen.space_8))
+            val top = if (below + hdmiPreview.height <= height) below else {
+                (buttonPosition[1] - rootPosition[1] - hdmiPreview.height - activity.dp(activity.uiDimen(R.dimen.space_8))).coerceAtLeast(0)
+            }
+            hdmiPreview.x = left.toFloat()
+            hdmiPreview.y = top.toFloat()
+        }
+    }
 
     fun updateConnectivityStatus(wifiEnabled: Boolean, wifiConnected: Boolean, bluetoothEnabled: Boolean) {
         connectivityStatusCapsule.setStatus(wifiEnabled, wifiConnected, bluetoothEnabled)
@@ -365,8 +450,9 @@ class LauncherHomeScreen(
         title: String,
         icon: Int,
         iconTint: Int = activity.uiColor(R.color.launcher_text_primary),
+        onFocusChanged: ((Boolean) -> Unit)? = null,
         onClick: (View) -> Unit,
-    ) = ActionIconButton(activity, title, icon, iconTint).apply {
+    ) = ActionIconButton(activity, title, icon, iconTint, onFocusChanged).apply {
         setOnClickListener { onClick(this) }
     }
 

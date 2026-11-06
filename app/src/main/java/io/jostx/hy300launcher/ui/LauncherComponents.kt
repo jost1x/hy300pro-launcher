@@ -78,6 +78,7 @@ class ActionIconButton(
     title: String,
     iconRes: Int,
     iconTint: Int? = null,
+    private val onFocusChanged: ((Boolean) -> Unit)? = null,
 ) : FrameLayout(activity) {
     init {
         isFocusable = true
@@ -112,6 +113,7 @@ class ActionIconButton(
                 .setDuration(activity.resources.getInteger(R.integer.motion_focus).toLong())
                 .start()
             view.elevation = activity.dp(if (focused) activity.uiDimen(R.dimen.elevation_action_focus) else 0).toFloat()
+            onFocusChanged?.invoke(focused)
         }
     }
 }

@@ -22,6 +22,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import io.jostx.hy300launcher.data.ImageControlClient
+import io.jostx.hy300launcher.data.ProjectorInputRepository
 import io.jostx.hy300launcher.data.FavoritesStore
 import io.jostx.hy300launcher.data.InstalledAppsRepository
 import io.jostx.hy300launcher.model.TvApp
@@ -38,6 +39,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private lateinit var appRepository: InstalledAppsRepository
     private lateinit var favoritesStore: FavoritesStore
+    private lateinit var projectorInputRepository: ProjectorInputRepository
     private lateinit var homeScreen: LauncherHomeScreen
     private lateinit var overlays: LauncherOverlayController
     private val apps = mutableListOf<TvApp>()
@@ -59,6 +61,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         appRepository = InstalledAppsRepository(packageManager, packageName)
+        projectorInputRepository = ProjectorInputRepository(this)
         favoritesStore = FavoritesStore(this)
         favoritePackages += favoritesStore.load().take(FavoritesStore.MAX_FAVORITES)
 
@@ -100,11 +103,17 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (!::homeScreen.isInitialized) return
+        homeScreen.syncHdmiPreview()
         refreshConnectivityStatus()
         when {
             overlays.hasAppMenu -> refreshMenuApps()
             !overlays.hasSettingsOverlay -> refreshApps()
         }
+    }
+
+    override fun onPause() {
+        if (::homeScreen.isInitialized) homeScreen.dismissHdmiPreview()
+        super.onPause()
     }
 
     override fun onStart() {
@@ -304,13 +313,20 @@ class MainActivity : Activity() {
     }
 
     private fun openInputs() {
-        val intent = Intent().setComponent(
-            ComponentName("com.softwinner.awsource", "com.softwinner.awsource.MainActivity"),
-        )
         try {
+            if (!projectorInputRepository.hasHdmi1()) {
+                Toast.makeText(this, "HDMI 1 no está disponible en este proyector", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val intent = Intent().setComponent(
+                ComponentName("com.softwinner.awlivetv", "com.softwinner.awlivetv.MainActivity"),
+            ).putExtra("input_source", "HDMI1")
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(this, "Selector de entradas no disponible", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Reproductor HDMI no disponible", Toast.LENGTH_SHORT).show()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "No se puede abrir la entrada HDMI 1", Toast.LENGTH_SHORT).show()
         }
     }
 

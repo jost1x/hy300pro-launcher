@@ -10,7 +10,7 @@ class InstalledAppsRepository(
 ) {
     companion object {
         const val INPUTS_SHORTCUT_ID = "io.jostx.hy300launcher.shortcut.inputs"
-        const val INPUTS_SHORTCUT_LABEL = "Entradas HDMI"
+        const val INPUTS_SHORTCUT_LABEL = "HDMI 1"
         private const val INPUTS_PACKAGE = "com.softwinner.awsource"
         private const val INPUTS_ACTIVITY = "com.softwinner.awsource.MainActivity"
     }

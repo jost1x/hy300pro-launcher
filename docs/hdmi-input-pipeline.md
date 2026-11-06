@@ -2,12 +2,12 @@
 
 ## Resumen
 
-El launcher no captura HDMI ni decodifica el vídeo. Solo abre el selector de entradas. La imagen entra por el hardware HDMI del proyector y el firmware la publica como una entrada de Android TV (TIF). `AwLiveTv` pide esa entrada a `TvView`; `VideoInputService` crea una sesión, enruta una `Surface` al hardware de TV y activa por separado el audio de entrada. El firmware y el HAL hacen el trabajo específico del SoC.
+El launcher no captura HDMI ni decodifica el vídeo. El usuario confirmó que su HY300 Pro funciona con una fuente conectada a HDMI 1 y que no tiene otras entradas utilizables. La lista del selector OEM contiene más opciones, pero no representa los conectores disponibles en esta unidad. Para HDMI 1, el firmware publica la entrada como Android TV (TIF); `AwLiveTv` la pide a `TvView`, y `VideoInputService` crea una sesión, enruta una `Surface` al hardware de TV y activa por separado el audio de entrada. El firmware y el HAL hacen el trabajo específico del SoC.
 
 ```mermaid
 sequenceDiagram
     actor Usuario
-    participant Selector as AwSource
+    participant Selector as Launcher
     participant Live as AwLiveTv / TvView
     participant TIF as Android TV Input Manager
     participant VIS as VideoInputService
@@ -15,8 +15,8 @@ sequenceDiagram
     participant HW as Receptor HDMI y ruta de vídeo/audio
     participant Display as Salida de vídeo Android → proyector
 
-    Usuario->>Selector: Elige HDMI1 (o CVBS)
-    Selector->>TIF: getTvInputList(); valida etiqueta/ID
+    Usuario->>Selector: Pulsa HDMI 1 en el launcher
+    Selector->>TIF: getTvInputList(); valida ID HW1
     Selector->>Live: Abre MainActivity(input_source="HDMI1")
     Live->>Live: Busca el origen por nombre o ID
     Live->>TIF: TvView.tune(inputId, channelUri)
@@ -32,17 +32,19 @@ sequenceDiagram
 
 El diagrama representa el flujo deducido de los APK. La ruta nativa y la implementación interna del HAL son propietarias; no se puede concluir del APK si el `Surface` se presenta mediante overlay/sideband, una ruta duplicada o una operación específica de este SoC.
 
-## 1. Selección: el launcher no cambia la ruta de vídeo
+## 1. Selección: el launcher abre HDMI 1 directamente
 
-`AwSource` define cinco opciones visuales: `HDMI1`, `HDMI2`, `HDMI3`, `CVBS1` y `CVBS2`. Al seleccionar una, consulta `TvInputManager.getTvInputList()` y busca coincidencia parcial, sin distinguir mayúsculas, entre el nombre visible (`TvInputInfo.loadLabel()`) o el ID del input. Si encuentra una entrada compatible, abre explícitamente `com.softwinner.awlivetv.MainActivity` con el extra `input_source` que contiene el nombre elegido. No lee el puerto con código propio ni copia bytes de vídeo.
+El launcher abre directamente `com.softwinner.awlivetv.MainActivity` con `input_source="HDMI1"`, después de comprobar que `TvInputManager.getTvInputList()` contenga el ID `com.softwinner.vis/.HdmiInputService/HW1`. Si falta el reproductor o el input, muestra un mensaje y no intenta abrir un puerto distinto. Esta acción evita el selector OEM.
 
-La lista del selector está fija en el APK; eso no significa que haya cinco conectores físicos. La comprobación de `TvInputManager` evita que el selector use un origen que el servicio no haya registrado. El número de puertos realmente disponibles debe comprobarse en el equipo con la lista de TV inputs.
+El selector `AwSource` sigue definiendo cinco opciones visuales (`HDMI1`, `HDMI2`, `HDMI3`, `CVBS1`, `CVBS2`) y valida sus elecciones con coincidencia parcial sobre la etiqueta o el ID del TV input. Su código pasa el nombre de la opción, por ejemplo `HDMI1`, como `input_source`. Esas opciones son etiquetas codificadas en el APK, no evidencia de que todos esos conectores estén disponibles. No lee el puerto con código propio ni copia bytes de vídeo.
+
+La lista del selector OEM está fija en el APK; eso no significa que haya cinco conectores físicos. La comprobación de `TvInputManager` evita abrir un input no registrado.
 
 ## 2. `AwLiveTv`: UI y solicitud de sintonización
 
-Al recibir `input_source`, `AwLiveTv` inicializa su `SourceManager`, resuelve el nombre contra las fuentes del sistema (`com.softwinner.inputsource.InputSourceManager`, de la biblioteca `com.softwinner.tv.jar`) y configura `TvView` con `tune(inputId, channelUri)`. Para HDMI/CVBS, el input ID identifica el puerto y el URI identifica el canal/input para el TIF; no es una URL de reproducción ni un archivo de vídeo. El código guarda la fuente seleccionada y presenta banner/estado de señal.
+Al recibir `input_source`, `AwLiveTv` inicializa su `SourceManager`, resuelve el nombre contra las fuentes del sistema (`com.softwinner.inputsource.InputSourceManager`, de la biblioteca `com.softwinner.tv.jar`) y configura `TvView` con `tune(inputId, channelUri)`. Para HDMI 1, el selector y el input ID corresponden a `com.softwinner.vis/.HdmiInputService/HW1`; la app OEM sintoniza una URI passthrough (`TvContract.buildChannelUriForPassthrough(inputId)`), no `content://android.media.tv/channel/2`. El canal TV normal con ID 2 también aparece en el proveedor como registro sintético, pero no es la URI usada por la ruta passthrough. La URI no es una URL de reproducción ni un archivo de vídeo. El código guarda la fuente seleccionada y presenta banner/estado de señal.
 
-`AwLiveTv` también consulta `persist.sys.hdmi_source`; ciertos valores de arranque (`1`–`5`) pueden elegir HDMI1–3 o CVBS1–2 y luego se limpian. Por tanto, en ese caso el valor de firmware puede prevalecer sobre el extra enviado por el selector.
+`AwLiveTv` también consulta `persist.sys.hdmi_source`; ciertos valores de arranque (`1`–`5`) pueden elegir HDMI1–3 o CVBS1–2 y luego se limpian. Por tanto, en ese caso el valor de firmware puede prevalecer sobre el extra enviado por el selector. La compatibilidad con esos valores no implica que todos esos puertos existan en el HY300 Pro.
 
 `TvView` es una vista de alto nivel: solicita el input al framework TV, que enlaza el servicio y gestiona la sesión y recursos. Esa separación es propia del Android TV Input Framework (TIF): la app de TV se comunica con el input mediante el manager del sistema, mientras que el servicio del fabricante integra el hardware. [AOSP: arquitectura TIF](https://source.android.com/docs/devices/tv) · [API `TvView`](https://developer.android.com/reference/android/media/tv/TvView)
 
@@ -83,11 +85,11 @@ La sesión HDMI también reenvía `onKeyDown` y `onKeyUp` a `HdmiTvClient.sendKe
 
 ## Qué se puede reemplazar
 
-- **Selector:** sí, el launcher podría ofrecer su propia UI y llamar `TvInputManager`/`TvView`, si se conserva la selección del ID correcto y un TV input registrado.
+- **Selector:** sí, el launcher podría abrir HDMI 1 directamente o mostrar una opción única, siempre comprobando que el TIF registre el input. En esta unidad no tiene sentido ofrecer HDMI 2/3 ni CVBS como entradas disponibles; la etiqueta múltiple del APK OEM no demuestra que existan.
 - **`AwLiveTv`:** se puede reemplazar como interfaz. La nueva app debe usar el TIF; no debería implementar captura de HDMI.
 - **`VideoInputService`:** no es una simple pantalla. Para reemplazarlo hay que reproducir su registro de hardware, sesiones, `TvInputHardware`, señales, audio privado, puente nativo y compatibilidad con el HAL del HY300 Pro. No hay evidencia de una API pública sencilla que permita omitirlo.
 - **HAL/TV server y hardware:** quedan fuera del launcher y son imprescindibles para la captura física. No están incluidos en estos APK y no se deben sustituir sin fuente/código del firmware, esquema de la placa y recuperación probada.
 
 ## Evidencia y límites de esta revisión
 
-La reconstrucción estática se basa en los APK extraídos del HY300 Pro guardados en `artifacts/projector-apks/`, su manifiesto, componentes, clases y llamadas decodificadas. La sesión ADB actual no tiene el proyector conectado, así que no se verificó en vivo el inventario de puertos, el estado de señal ni la imagen/audio con una fuente HDMI activa. Tampoco se inspeccionó el contenido de `com.softwinner.tv.jar`, las bibliotecas nativas del firmware o la implementación del HAL. Por tanto, el flujo de alto nivel está respaldado por el código Android observado; la ruta interna final del chip está descrita solo hasta el límite que exponen esas APIs.
+La reconstrucción estática se basa en los APK extraídos del HY300 Pro guardados en `artifacts/projector-apks/`, su manifiesto, componentes, clases y llamadas decodificadas. Además, el usuario comprobó que una fuente HDMI funciona por HDMI 1 y reportó que no dispone de otras entradas utilizables. En una comprobación ADB posterior, el TIF registró `HW1` conectado y `HW2`/`HW3` desconectados. Una primera prueba de `TvView` embebido usó por error `content://android.media.tv/channel/2` en vez de la URI passthrough que emplea `AwLiveTv`; durante esa prueba el proceso OEM `com.softwinner.awtvinputservice` terminó con `SIGSEGV` en `libhdmi_jni.so`, dentro de `__HVIS_CaptureThread`. Luego se usó `content://android.media.tv/passthrough/` seguido del ID escapado (`Uri.encode(inputId)`): el TIF creó una sesión para el UID del launcher y no se observó otro crash. La tarjeta actual aparece solo al enfocar o pasar el puntero por el botón HDMI 1 y libera la sesión al dejarlo. La captura de pantalla ADB no muestra la superficie de vídeo, así que falta confirmar visualmente la imagen en el proyector. El botón abre `AwLiveTv` a pantalla completa sin pasar por `AwSource`. Tampoco se inspeccionó el contenido de `com.softwinner.tv.jar`, las bibliotecas nativas o la implementación del HAL.
