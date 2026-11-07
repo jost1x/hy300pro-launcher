@@ -8,7 +8,9 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import io.jostx.hy300launcher.R
+import io.jostx.hy300launcher.data.HdmiPlayer
 
 /** Full-screen, D-pad-friendly settings page for launcher-specific options. */
 class LauncherSettingsOverlay(
@@ -17,6 +19,8 @@ class LauncherSettingsOverlay(
     private val onManageHomeApps: () -> Unit,
     private val onChooseDefaultLauncher: () -> Unit,
     private val onAbout: () -> Unit,
+    selectedHdmiPlayer: HdmiPlayer,
+    private val onSelectHdmiPlayer: (HdmiPlayer) -> Unit,
 ) : LinearLayout(activity) {
     private val rows = mutableListOf<View>()
 
@@ -74,6 +78,27 @@ class LauncherSettingsOverlay(
         )
 
         content.addView(
+            activity.launcherLabel("Entrada HDMI", R.style.LauncherTextCaption, bold = true),
+            LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_26)); bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
+        )
+        var activeHdmiPlayer = selectedHdmiPlayer
+        lateinit var hdmiPlayerDescription: TextView
+        content.addView(
+            settingRow(
+                R.drawable.ic_monitor_play,
+                "Reproductor HDMI",
+                "${activeHdmiPlayer.label} · selección activa",
+                onClick = {
+                    activeHdmiPlayer = if (activeHdmiPlayer == HdmiPlayer.LAUNCHER) HdmiPlayer.OEM else HdmiPlayer.LAUNCHER
+                    onSelectHdmiPlayer(activeHdmiPlayer)
+                    hdmiPlayerDescription.text = "${activeHdmiPlayer.label} · selección activa"
+                },
+                onDescriptionViewCreated = { hdmiPlayerDescription = it },
+            ),
+            LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
+        )
+
+        content.addView(
             activity.launcherLabel("Información", R.style.LauncherTextCaption, bold = true),
             LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_26)); bottomMargin = activity.dp(activity.uiDimen(R.dimen.space_10)) },
         )
@@ -93,7 +118,13 @@ class LauncherSettingsOverlay(
         post { rows.firstOrNull()?.requestFocus() }
     }
 
-    private fun settingRow(iconRes: Int, title: String, description: String, onClick: () -> Unit) =
+    private fun settingRow(
+        iconRes: Int,
+        title: String,
+        description: String,
+        onClick: () -> Unit,
+        onDescriptionViewCreated: ((TextView) -> Unit)? = null,
+    ) =
         LinearLayout(activity).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -109,12 +140,14 @@ class LauncherSettingsOverlay(
                 }, FrameLayout.LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_25)), activity.dp(activity.uiDimen(R.dimen.space_25)), Gravity.CENTER))
             }, LayoutParams(activity.dp(activity.uiDimen(R.dimen.space_44)), activity.dp(activity.uiDimen(R.dimen.space_44))).apply { rightMargin = activity.dp(activity.uiDimen(R.dimen.space_18)) })
 
+            val descriptionView = activity.launcherLabel(description, R.style.LauncherTextCaption).apply {
+                maxLines = 2
+            }
+            onDescriptionViewCreated?.invoke(descriptionView)
             val text = LinearLayout(activity).apply {
                 orientation = VERTICAL
                 addView(activity.launcherLabel(title, R.style.LauncherTextBody, bold = true))
-                addView(activity.launcherLabel(description, R.style.LauncherTextCaption).apply {
-                    maxLines = 2
-                }, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_3)) })
+                addView(descriptionView, LayoutParams(-1, -2).apply { topMargin = activity.dp(activity.uiDimen(R.dimen.space_3)) })
             }
             addView(text, LayoutParams(0, -2, 1f))
             addView(activity.launcherLabel("›", R.style.LauncherTextTitle), LayoutParams(-2, -2).apply {

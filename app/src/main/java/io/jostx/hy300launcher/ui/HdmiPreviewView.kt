@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.tv.TvInputManager
 import android.media.tv.TvView
 import android.net.Uri
+import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -12,8 +13,11 @@ import android.widget.TextView
 import io.jostx.hy300launcher.R
 import io.jostx.hy300launcher.data.ProjectorInputRepository
 
-/** Live HDMI 1 preview using the same passthrough URI as the OEM TV app. */
-class HdmiPreviewView(activity: Activity) : FrameLayout(activity) {
+/** Live HDMI 1 surface using the same passthrough URI as the OEM TV app. */
+class HdmiPreviewView(
+    activity: Activity,
+    roundedCorners: Boolean = true,
+) : FrameLayout(activity) {
     private val tvView = TvView(activity)
     private val status = TextView(activity).apply {
         text = "Conectando con HDMI 1…"
@@ -33,7 +37,9 @@ class HdmiPreviewView(activity: Activity) : FrameLayout(activity) {
 
     private val callback = object : TvView.TvInputCallback() {
         override fun onVideoAvailable(inputId: String) {
-            if (inputId == this@HdmiPreviewView.inputId) status.visibility = View.GONE
+            if (inputId == this@HdmiPreviewView.inputId) {
+                status.visibility = View.GONE
+            }
         }
 
         override fun onVideoUnavailable(inputId: String, reason: Int) {
@@ -65,12 +71,16 @@ class HdmiPreviewView(activity: Activity) : FrameLayout(activity) {
     init {
         isFocusable = false
         isFocusableInTouchMode = false
-        background = activity.rounded(
-            activity.uiColor(R.color.launcher_surface),
-            activity.uiDimen(R.dimen.radius_surface),
-        )
-        clipToOutline = true
-        outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        if (roundedCorners) {
+            background = activity.rounded(
+                activity.uiColor(R.color.launcher_surface),
+                activity.uiDimen(R.dimen.radius_surface),
+            )
+            clipToOutline = true
+            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        } else {
+            setBackgroundColor(Color.BLACK)
+        }
         addView(tvView, LayoutParams(-1, -1))
         addView(status, LayoutParams(-1, -1))
         tvView.setCallback(callback)
@@ -93,5 +103,10 @@ class HdmiPreviewView(activity: Activity) : FrameLayout(activity) {
         if (!tuned) return
         tvView.reset()
         tuned = false
+    }
+
+    fun release() {
+        pausePreview()
+        tvView.setCallback(null)
     }
 }

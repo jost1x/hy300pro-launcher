@@ -3,6 +3,7 @@ package io.jostx.hy300launcher.ui
 import android.app.Activity
 import android.view.View
 import android.widget.FrameLayout
+import io.jostx.hy300launcher.data.HdmiPlayer
 import io.jostx.hy300launcher.model.TvApp
 
 /** Coordinates modal app and settings surfaces over the home screen. */
@@ -19,6 +20,8 @@ class LauncherOverlayController(
     private val onLaunchApp: (TvApp) -> Unit,
     private val onChooseDefaultLauncher: () -> Unit,
     private val onAbout: () -> Unit,
+    private val currentHdmiPlayer: () -> HdmiPlayer,
+    private val onSelectHdmiPlayer: (HdmiPlayer) -> Unit,
     private val onProjectorSettings: () -> Unit,
     private val onAndroidSettings: () -> Unit,
 ) {
@@ -131,6 +134,8 @@ class LauncherOverlayController(
             },
             onChooseDefaultLauncher = onChooseDefaultLauncher,
             onAbout = onAbout,
+            selectedHdmiPlayer = currentHdmiPlayer(),
+            onSelectHdmiPlayer = onSelectHdmiPlayer,
         ).also { overlay ->
             root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
             overlay.focusInitialItem()
